@@ -1,41 +1,55 @@
+#!/usr/bin/env node
+
 const esbuild = require("esbuild");
 const path = require("path");
+const fs = require("fs");
 
-const production = process.argv.includes("--production");
-const watch = process.argv.includes("--watch");
+const root = path.resolve(__dirname, "..");
+const outDir = path.join(root, "media");
+const isWatch = process.argv.includes("--watch");
 
-async function main() {
-  const ctx = await esbuild.context({
-    entryPoints: [path.resolve(__dirname, "../src/ladder/webview/main.tsx")],
-    bundle: true,
-    outfile: path.resolve(__dirname, "../media/ladderWebview.js"),
-    platform: "browser",
-    format: "esm",
-    sourcemap: !production,
-    minify: production,
-    loader: {
-      ".tsx": "tsx",
-      ".ts": "ts",
-      ".css": "css",
-    },
-    define: {
-      "process.env.NODE_ENV": production ? '"production"' : '"development"',
-    },
-    external: [],
-    logLevel: "info",
-  });
+// Ensure output directory exists
+if (!fs.existsSync(outDir)) {
+  fs.mkdirSync(outDir, { recursive: true });
+}
 
-  if (watch) {
-    await ctx.watch();
-    console.log("Watching for changes...");
-  } else {
-    await ctx.rebuild();
-    await ctx.dispose();
-    console.log("Build complete!");
+const buildOptions = {
+  entryPoints: [path.join(root, "src", "ladder", "webview", "main.tsx")],
+  bundle: true,
+  outfile: path.join(outDir, "ladderWebview.js"),
+  platform: "browser",
+  target: ["es2020"],
+  format: "iife",
+  sourcemap: true,
+  minify: !isWatch,
+  jsx: "automatic",
+  loader: {
+    ".tsx": "tsx",
+    ".ts": "ts",
+    ".jsx": "jsx",
+    ".js": "js",
+    ".css": "css",
+  },
+  define: {
+    "process.env.NODE_ENV": isWatch ? '"development"' : '"production"',
+  },
+  logLevel: "info",
+};
+
+async function build() {
+  try {
+    if (isWatch) {
+      const ctx = await esbuild.context(buildOptions);
+      await ctx.watch();
+      console.log("👀 Watching for changes...");
+    } else {
+      await esbuild.build(buildOptions);
+      console.log("✅ Ladder webview built successfully");
+    }
+  } catch (error) {
+    console.error("❌ Build failed:", error);
+    process.exit(1);
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+build();

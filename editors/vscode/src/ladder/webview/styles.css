@@ -102,6 +102,10 @@ body {
   position: relative;
 }
 
+.canvas-container.tool-selected {
+  cursor: crosshair;
+}
+
 /* Status Bar */
 .status-bar {
   display: flex;

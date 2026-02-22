@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import type { LadderProgram } from "./ladderEngine";
+import type { LadderProgram } from "./ladderEngine.types";
+import { LadderEngine } from "./ladderEngine";
+import { RuntimeClient, getRuntimeConfig } from "../statechart/runtimeClient";
 
 type ExecutionMode = "simulation" | "hardware";
 
@@ -8,6 +10,8 @@ interface ExecutionState {
   program: LadderProgram;
   mode: ExecutionMode;
   isRunning: boolean;
+  engine: LadderEngine;
+  webviewPanel: vscode.WebviewPanel;
 }
 
 const WEBVIEW_HTML_TEMPLATE = `<!DOCTYPE html>
@@ -52,6 +56,9 @@ const WEBVIEW_HTML_TEMPLATE = `<!DOCTYPE html>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      const vscode = acquireVsCodeApi();
+    </script>
     <script src="{{webviewScript}}"></script>
   </body>
 </html>
@@ -89,6 +96,7 @@ export class LadderEditorProvider implements vscode.CustomTextEditorProvider {
     _token: vscode.CancellationToken
   ): Promise<void> {
     const docId = document.uri.toString();
+    console.log("[Ladder] resolveCustomTextEditor called for:", docId);
 
     // Setup webview
     webviewPanel.webview.options = {
@@ -99,21 +107,24 @@ export class LadderEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     // Set initial HTML content
-    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+    const html = this.getHtmlForWebview(webviewPanel.webview);
+    console.log("[Ladder] Setting webview HTML, length:", html.length);
+    webviewPanel.webview.html = html;
 
     // Handle messages from webview
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
+      console.log("[Ladder] Received message from webview:", message.type);
       switch (message.type) {
         case "save":
           await this.saveProgram(document, message.program);
           break;
 
         case "runSimulation":
-          await this.runSimulation(docId, message.program);
+          await this.runSimulation(docId, message.program, webviewPanel);
           break;
 
         case "runHardware":
-          await this.runHardware(docId, message.program);
+          await this.runHardware(docId, message.program, webviewPanel);
           break;
 
         case "stop":
@@ -122,7 +133,10 @@ export class LadderEditorProvider implements vscode.CustomTextEditorProvider {
 
         case "ready":
           // Webview is ready, send initial program data
+          console.log("[Ladder] Webview ready, loading program...");
           const program = this.loadProgram(document);
+          console.log("[Ladder] Loaded program with", program.rungs.length, "rungs");
+          console.log("[Ladder] Sending loadProgram message to webview");
           webviewPanel.webview.postMessage({
             type: "loadProgram",
             program,
@@ -209,37 +223,90 @@ export class LadderEditorProvider implements vscode.CustomTextEditorProvider {
   /**
    * Run in simulation mode
    */
-  private async runSimulation(docId: string, program: LadderProgram): Promise<void> {
+  private async runSimulation(docId: string, program: LadderProgram, webviewPanel: vscode.WebviewPanel): Promise<void> {
     console.log("[Ladder] Starting simulation mode");
     
+    // Create ladder engine
+    const engine = new LadderEngine(program, "simulation", {
+      scanCycleMs: 100, // 100ms scan cycle
+    });
+
+    // Set up state change callback to send updates to webview
+    engine.setStateChangeCallback((state) => {
+      webviewPanel.webview.postMessage({
+        type: "stateUpdate",
+        state,
+      });
+    });
+
     this.activeExecutions.set(docId, {
       program,
       mode: "simulation",
       isRunning: true,
+      engine,
+      webviewPanel,
     });
 
-    // TODO: Implement ladder interpreter for simulation
-    vscode.window.showInformationMessage(
-      "Ladder simulation mode - interpreter not yet implemented"
-    );
+    // Start execution
+    await engine.start();
+
+    // Notify webview
+    webviewPanel.webview.postMessage({ type: "executionStarted", mode: "simulation" });
+    
+    vscode.window.showInformationMessage("🚀 Ladder simulation started (100ms scan cycle)");
   }
 
   /**
    * Run in hardware mode
    */
-  private async runHardware(docId: string, program: LadderProgram): Promise<void> {
+  private async runHardware(docId: string, program: LadderProgram, webviewPanel: vscode.WebviewPanel): Promise<void> {
     console.log("[Ladder] Starting hardware mode");
 
-    this.activeExecutions.set(docId, {
-      program,
-      mode: "hardware",
-      isRunning: true,
-    });
+    try {
+      // Get runtime configuration
+      const config = await getRuntimeConfig();
+      if (!config) {
+        vscode.window.showErrorMessage("No runtime configuration found. Please configure trust-runtime connection.");
+        return;
+      }
 
-    // TODO: Implement hardware execution via RuntimeClient
-    vscode.window.showInformationMessage(
-      "Ladder hardware mode - RuntimeClient integration not yet implemented"
-    );
+      // Create and connect runtime client
+      const runtimeClient = new RuntimeClient(config);
+      await runtimeClient.connect();
+
+      // Create ladder engine with hardware mode
+      const engine = new LadderEngine(program, "hardware", {
+        scanCycleMs: 100,
+        runtimeClient,
+      });
+
+      // Set up state change callback
+      engine.setStateChangeCallback((state) => {
+        webviewPanel.webview.postMessage({
+          type: "stateUpdate",
+          state,
+        });
+      });
+
+      this.activeExecutions.set(docId, {
+        program,
+        mode: "hardware",
+        isRunning: true,
+        engine,
+        webviewPanel,
+      });
+
+      // Start execution
+      await engine.start();
+
+      // Notify webview
+      webviewPanel.webview.postMessage({ type: "executionStarted", mode: "hardware" });
+      
+      vscode.window.showInformationMessage("🔧 Ladder hardware execution started");
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to start hardware execution: ${error}`);
+      console.error("[Ladder] Hardware execution error:", error);
+    }
   }
 
   /**
@@ -252,9 +319,15 @@ export class LadderEditorProvider implements vscode.CustomTextEditorProvider {
     console.log("[Ladder] Stopping execution");
     state.isRunning = false;
 
-    // TODO: Stop interpreter/runtime client
+    // Stop engine and cleanup
+    await state.engine.cleanup();
+    
+    // Notify webview
+    state.webviewPanel.webview.postMessage({ type: "executionStopped" });
     
     this.activeExecutions.delete(docId);
+    
+    vscode.window.showInformationMessage("⏹️ Ladder execution stopped");
   }
 
   /**
