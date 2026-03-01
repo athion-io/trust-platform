@@ -295,57 +295,62 @@ impl VariableStorage {
     }
 
     pub fn read_by_ref(&self, value_ref: crate::value::ValueRef) -> Option<&Value> {
-        let root = match value_ref.location {
-            MemoryLocation::Global => self.globals.get_index(value_ref.offset).map(|(_, v)| v),
+        self.read_by_ref_parts(value_ref.location, value_ref.offset, &value_ref.path)
+    }
+
+    pub fn read_by_ref_parts(
+        &self,
+        location: MemoryLocation,
+        offset: usize,
+        path: &[RefSegment],
+    ) -> Option<&Value> {
+        let root = match location {
+            MemoryLocation::Global => self.globals.get_index(offset).map(|(_, v)| v),
             MemoryLocation::Local(frame_id) => self
                 .frames
                 .iter()
                 .find(|frame| frame.id == frame_id)
-                .and_then(|frame| frame.variables.get_index(value_ref.offset).map(|(_, v)| v)),
-            MemoryLocation::Instance(instance_id) => {
-                self.instances.get(&instance_id).and_then(|instance| {
-                    instance
-                        .variables
-                        .get_index(value_ref.offset)
-                        .map(|(_, v)| v)
-                })
-            }
+                .and_then(|frame| frame.variables.get_index(offset).map(|(_, v)| v)),
+            MemoryLocation::Instance(instance_id) => self
+                .instances
+                .get(&instance_id)
+                .and_then(|instance| instance.variables.get_index(offset).map(|(_, v)| v)),
             MemoryLocation::Io(_) | MemoryLocation::Retain => None,
         }?;
 
-        read_by_ref_path(root, &value_ref.path)
+        read_by_ref_path(root, path)
     }
 
     pub fn write_by_ref(&mut self, value_ref: crate::value::ValueRef, value: Value) -> bool {
-        match value_ref.location {
+        self.write_by_ref_parts(value_ref.location, value_ref.offset, &value_ref.path, value)
+    }
+
+    pub fn write_by_ref_parts(
+        &mut self,
+        location: MemoryLocation,
+        offset: usize,
+        path: &[RefSegment],
+        value: Value,
+    ) -> bool {
+        match location {
             MemoryLocation::Global => {
-                let Some((_, slot)) = self.globals.get_index_mut(value_ref.offset) else {
+                let Some((_, slot)) = self.globals.get_index_mut(offset) else {
                     return false;
                 };
-                write_by_ref_path(slot, &value_ref.path, value)
+                write_by_ref_path(slot, path, value)
             }
             MemoryLocation::Local(frame_id) => self
                 .frames
                 .iter_mut()
                 .find(|frame| frame.id == frame_id)
-                .and_then(|frame| {
-                    frame
-                        .variables
-                        .get_index_mut(value_ref.offset)
-                        .map(|(_, v)| v)
-                })
-                .map(|slot| write_by_ref_path(slot, &value_ref.path, value))
+                .and_then(|frame| frame.variables.get_index_mut(offset).map(|(_, v)| v))
+                .map(|slot| write_by_ref_path(slot, path, value))
                 .unwrap_or(false),
             MemoryLocation::Instance(instance_id) => self
                 .instances
                 .get_mut(&instance_id)
-                .and_then(|instance| {
-                    instance
-                        .variables
-                        .get_index_mut(value_ref.offset)
-                        .map(|(_, v)| v)
-                })
-                .map(|slot| write_by_ref_path(slot, &value_ref.path, value))
+                .and_then(|instance| instance.variables.get_index_mut(offset).map(|(_, v)| v))
+                .map(|slot| write_by_ref_path(slot, path, value))
                 .unwrap_or(false),
             MemoryLocation::Io(_) | MemoryLocation::Retain => false,
         }

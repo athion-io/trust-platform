@@ -155,6 +155,58 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_execution_backend_flag() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "run",
+            "--project",
+            "project",
+            "--execution-backend",
+            "vm",
+        ]);
+        match cli.command.expect("command") {
+            Command::Run {
+                execution_backend, ..
+            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Vm)),
+            other => panic!("expected run command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_run_execution_backend_interpreter_flag() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "run",
+            "--project",
+            "project",
+            "--execution-backend",
+            "interpreter",
+        ]);
+        match cli.command.expect("command") {
+            Command::Run {
+                execution_backend, ..
+            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Interpreter)),
+            other => panic!("expected run command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_play_execution_backend_flag() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "play",
+            "--execution-backend",
+            "interpreter",
+        ]);
+        match cli.command.expect("command") {
+            Command::Play {
+                execution_backend, ..
+            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Interpreter)),
+            other => panic!("expected play command, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_hmi_init_command() {
         let cli = Cli::parse_from([
             "trust-runtime",

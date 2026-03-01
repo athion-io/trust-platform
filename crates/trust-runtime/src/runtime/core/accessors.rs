@@ -102,6 +102,22 @@ impl Runtime {
         self.current_time
     }
 
+    /// Returns the active execution backend mode.
+    #[must_use]
+    pub fn execution_backend(&self) -> crate::execution_backend::ExecutionBackend {
+        self.execution_backend
+    }
+
+    /// Select execution backend mode.
+    pub fn set_execution_backend(
+        &mut self,
+        backend: crate::execution_backend::ExecutionBackend,
+    ) -> Result<(), error::RuntimeError> {
+        super::backend::validate_backend_selection(self, backend)?;
+        self.execution_backend = backend;
+        Ok(())
+    }
+
     /// Access the I/O interface.
     pub fn io(&self) -> &IoInterface {
         self.io.interface()

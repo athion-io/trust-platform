@@ -5,6 +5,7 @@
 use crate::debug::DebugControl;
 use crate::eval::expr::Expr;
 use crate::eval::{ClassDef, EvalContext, FunctionBlockDef, FunctionDef, InterfaceDef};
+use crate::execution_backend::ExecutionBackend;
 use crate::io::{IoDriver, IoDriverStatus, IoInterface, IoSafeState};
 use crate::memory::{AccessMap, FrameId, InstanceId, VariableStorage};
 use crate::metrics::RuntimeMetrics;
@@ -16,6 +17,7 @@ use crate::watchdog::{FaultDecision, FaultPolicy, WatchdogPolicy};
 use crate::{error, eval, stdlib};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
+use std::sync::Arc;
 use trust_hir::types::TypeRegistry;
 use trust_hir::Type;
 
@@ -28,6 +30,8 @@ use super::watchdog_subsystem::WatchdogSubsystem;
 
 /// Minimal runtime entry point (extended later).
 pub struct Runtime {
+    pub(super) execution_backend: ExecutionBackend,
+    pub(super) vm_module: Option<Arc<super::vm::VmModule>>,
     pub(super) profile: DateTimeProfile,
     pub(super) storage: VariableStorage,
     pub(super) registry: TypeRegistry,
@@ -59,6 +63,8 @@ pub struct Runtime {
 impl std::fmt::Debug for Runtime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Runtime")
+            .field("execution_backend", &self.execution_backend)
+            .field("vm_module_loaded", &self.vm_module.is_some())
             .field("profile", &self.profile)
             .field("storage", &self.storage)
             .field("registry", &self.registry)

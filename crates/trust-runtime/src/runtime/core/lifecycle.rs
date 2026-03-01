@@ -3,6 +3,8 @@ impl Runtime {
     #[must_use]
     pub fn new() -> Self {
         let mut runtime = Self {
+            execution_backend: crate::execution_backend::ExecutionBackend::Interpreter,
+            vm_module: None,
             profile: DateTimeProfile::default(),
             storage: VariableStorage::default(),
             registry: TypeRegistry::new(),

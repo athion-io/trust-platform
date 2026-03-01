@@ -8,6 +8,7 @@ impl RuntimeToml {
         let tasks = parse_tasks(self.resource.tasks)?;
 
         let RuntimeSection {
+            execution_backend,
             control,
             log,
             retain,
@@ -22,6 +23,18 @@ impl RuntimeToml {
             observability,
             opcua,
         } = self.runtime;
+        let (execution_backend, execution_backend_source) =
+            match execution_backend.as_deref().map(str::trim) {
+                Some(value) if !value.is_empty() => {
+                    (ExecutionBackend::parse(value)?, ExecutionBackendSource::Config)
+                }
+                Some(_) => {
+                    return Err(RuntimeError::InvalidConfig(
+                        "runtime.execution_backend must not be empty".into(),
+                    ));
+                }
+                None => (ExecutionBackend::Interpreter, ExecutionBackendSource::Default),
+            };
 
         let parsed_control = parse_control(&control)?;
         let parsed_retain_mode = parse_retain_mode(&retain)?;
@@ -45,6 +58,8 @@ impl RuntimeToml {
             bundle_version,
             resource_name,
             cycle_interval,
+            execution_backend,
+            execution_backend_source,
             control_endpoint: SmolStr::new(control.endpoint),
             control_auth_token: parsed_control.auth_token,
             control_debug_enabled: parsed_control.debug_enabled,

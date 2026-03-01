@@ -132,6 +132,14 @@ impl Runtime {
 
     /// Execute a program body in the runtime context.
     pub fn execute_program(&mut self, program: &ProgramDef) -> Result<(), error::RuntimeError> {
+        let backend = super::backend::resolve_backend(self.execution_backend);
+        backend.execute_program(self, program)
+    }
+
+    pub(super) fn execute_program_interpreter(
+        &mut self,
+        program: &ProgramDef,
+    ) -> Result<(), error::RuntimeError> {
         let mut debug = self.debug.take();
         let instance_id = match self.storage.get_global(program.name.as_ref()) {
             Some(Value::Instance(id)) => Some(*id),
@@ -319,6 +327,14 @@ impl Runtime {
     }
 
     fn execute_function_block_ref(
+        &mut self,
+        reference: &crate::value::ValueRef,
+    ) -> Result<(), error::RuntimeError> {
+        let backend = super::backend::resolve_backend(self.execution_backend);
+        backend.execute_function_block_ref(self, reference)
+    }
+
+    pub(super) fn execute_function_block_ref_interpreter(
         &mut self,
         reference: &crate::value::ValueRef,
     ) -> Result<(), error::RuntimeError> {

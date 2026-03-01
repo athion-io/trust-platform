@@ -2,6 +2,7 @@ fn validate_pou_index(
     strings: &StringTable,
     types: &TypeTable,
     const_pool: &ConstPool,
+    ref_table: &RefTable,
     index: &PouIndex,
     bodies: &[u8],
 ) -> Result<(), BytecodeError> {
@@ -64,7 +65,7 @@ fn validate_pou_index(
                 "POU code out of bounds".into(),
             ));
         }
-        validate_instruction_stream(index, types, start, &bodies[start..end])?;
+        validate_instruction_stream(index, types, const_pool, ref_table, start, &bodies[start..end])?;
     }
     Ok(())
 }
@@ -72,6 +73,8 @@ fn validate_pou_index(
 fn validate_instruction_stream(
     index: &PouIndex,
     types: &TypeTable,
+    const_pool: &ConstPool,
+    ref_table: &RefTable,
     _base: usize,
     code: &[u8],
 ) -> Result<(), BytecodeError> {
@@ -123,13 +126,15 @@ fn validate_instruction_stream(
                 }
             }
             0x10 => {
-                reader.read_u32()?;
+                let const_idx = reader.read_u32()?;
+                ensure_const_index(const_pool, const_idx)?;
             }
             0x16 => {
                 reader.read_u8()?;
             }
             0x20..=0x22 => {
-                reader.read_u32()?;
+                let ref_idx = reader.read_u32()?;
+                ensure_ref_index(ref_table, ref_idx)?;
             }
             0x23 => {}
             0x30 => {

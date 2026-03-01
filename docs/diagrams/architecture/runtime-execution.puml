@@ -15,6 +15,7 @@ title truST Runtime: Bytecode, Scheduler, and Simulation Engine
 package "Runtime Core" as runtimeCore #LightGreen {
 
     class "Runtime" as runtime <<runtime/core.rs:22-44>> {
+        execution_backend: ExecutionBackend
         profile: DateTimeProfile
         storage: VariableStorage
         registry: TypeRegistry
@@ -45,6 +46,30 @@ package "Runtime Core" as runtimeCore #LightGreen {
         +apply_bytecode_metadata()
         +apply_bytecode_module()
     }
+}
+
+package "Execution Backend Boundary" as backendPkg #LightYellow {
+    interface "RuntimeExecutionBackend\n(runtime/backend.rs)" as backendContract
+    component "InterpreterBackend" as interpBackend
+    component "BytecodeVmBackend\n(phase-gated)" as vmBackend
+
+    backendContract <|.. interpBackend
+    backendContract <|.. vmBackend
+    runtime ..> backendContract : program/FB dispatch
+
+    package "Bytecode VM Core\n(runtime/vm/*)" as vmCore #LightCyan {
+        component "dispatch.rs\n(PC loop + op dispatch)" as vmDispatch
+        component "stack.rs\n(operand stack invariants)" as vmStack
+        component "frames.rs + call.rs\n(frame/call stack)" as vmFrames
+        component "errors.rs\n(trap -> RuntimeError)" as vmErrors
+        component "debug_map.rs\n(symbol/source mappings)" as vmDebugMap
+    }
+
+    vmBackend --> vmDispatch
+    vmDispatch ..> vmStack
+    vmDispatch ..> vmFrames
+    vmDispatch ..> vmErrors
+    vmDispatch ..> vmDebugMap
 }
 
 ' ============================================================
@@ -128,6 +153,7 @@ package "Execution Cycle" as cyclePkg #LightBlue {
         execute_task():
         • emits TaskStart event
         • runs programs + FB refs
+        • dispatches via backend boundary
         • emits TaskEnd event
         • task → DAP thread id
     end note

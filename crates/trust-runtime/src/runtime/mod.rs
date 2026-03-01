@@ -2,6 +2,7 @@
 
 #![allow(missing_docs)]
 
+mod backend;
 mod bytecode;
 mod core;
 mod cycle;
@@ -13,6 +14,7 @@ mod metrics_subsystem;
 mod restart;
 mod retain_store;
 pub(crate) mod types;
+mod vm;
 mod watchdog_subsystem;
 
 pub use core::Runtime;
