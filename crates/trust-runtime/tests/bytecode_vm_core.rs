@@ -179,6 +179,7 @@ fn patch_first_call_native_arg_count(module: &mut BytecodeModule, arg_count: u32
             | 0x31
             | 0x32
             | 0x33
+            | 0x61
             | 0x40..=0x4E
             | 0x50..=0x55 => Some(0),
             0x02..=0x05 | 0x07 | 0x10 | 0x20..=0x22 | 0x30 | 0x60 | 0x70 => Some(4),
@@ -240,6 +241,7 @@ fn patch_first_opcode_u32_operand(module: &mut BytecodeModule, opcode: u8, opera
             | 0x31
             | 0x32
             | 0x33
+            | 0x61
             | 0x40..=0x4E
             | 0x50..=0x55 => 0,
             0x02..=0x05 | 0x07 | 0x10 | 0x20..=0x22 | 0x30 | 0x60 | 0x70 => 4,
@@ -552,6 +554,44 @@ fn vm_opcode_positive_path_covers_dynamic_reference_and_nested_chains() {
 }
 
 #[test]
+fn vm_opcode_positive_path_covers_sizeof_type_and_expr_forms() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_size_type_int : DINT := DINT#0;
+            out_size_expr_s : DINT := DINT#0;
+            out_size_expr_ws : DINT := DINT#0;
+        END_VAR
+
+        out_size_type_int := SIZEOF(INT);
+        out_size_expr_s := SIZEOF('HELLO');
+        out_size_expr_ws := SIZEOF("AB");
+        END_PROGRAM
+    "#;
+    let module = bytecode_module_from_source(source).expect("compile bytecode module");
+    let body = main_body_bytes(&module);
+    assert!(
+        body.contains(&0x60),
+        "expected SIZEOF_TYPE opcode in main body"
+    );
+    assert!(
+        body.contains(&0x61),
+        "expected SIZEOF_VALUE opcode in main body"
+    );
+
+    let mut harness = vm_harness(source);
+    let cycle = harness.cycle();
+    assert!(
+        cycle.errors.is_empty(),
+        "SIZEOF opcode execution failed: {:?}",
+        cycle.errors
+    );
+    harness.assert_eq("out_size_type_int", 2i32);
+    harness.assert_eq("out_size_expr_s", 5i32);
+    harness.assert_eq("out_size_expr_ws", 4i32);
+}
+
+#[test]
 fn vm_enforces_execution_deadline() {
     let source = r#"
         PROGRAM Main
@@ -675,6 +715,65 @@ fn vm_rejects_load_dynamic_with_non_reference_operand() {
             .any(|err| matches!(err, RuntimeError::TypeMismatch)),
         "expected TypeMismatch for LOAD_DYNAMIC on non-reference, got {:?}",
         cycle.errors
+    );
+}
+
+#[test]
+fn vm_validator_rejects_invalid_sizeof_type_index() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_size : DINT := DINT#0;
+        END_VAR
+        out_size := SIZEOF(INT);
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    patch_first_opcode_u32_operand(&mut module, 0x60, 255);
+
+    assert_apply_invalid_bytecode_contains(&module, "invalid index 255 for type");
+}
+
+#[test]
+fn vm_rejects_sizeof_expr_for_null_value() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_size : DINT := DINT#0;
+        END_VAR
+        out_size := DINT#0;
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    let body = vec![
+        0x61, // SIZEOF_VALUE without operand -> stack underflow
+        0x06, // RET
+    ];
+    replace_main_body(&mut module, &body);
+
+    let mut harness = vm_harness_from_module(source, &module);
+    let cycle = harness.cycle();
+    assert_invalid_bytecode_contains(&cycle.errors, "vm operand stack underflow");
+}
+
+#[test]
+fn vm_lowering_rejects_unsupported_c5_edge_case_stmt_paths() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            x : INT := INT#0;
+        END_VAR
+        JMP L1;
+        x := INT#1;
+        L1: x := x + INT#2;
+        END_PROGRAM
+    "#;
+    let err =
+        bytecode_module_from_source(source).expect_err("expected deterministic lowering error");
+    let message = err.to_string();
+    assert!(
+        message.contains("unsupported C5 edge-case lowering path"),
+        "expected deterministic C5 lowering rejection, got: {message}"
     );
 }
 

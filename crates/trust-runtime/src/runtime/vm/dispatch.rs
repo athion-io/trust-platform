@@ -2,11 +2,12 @@ use std::time::Instant;
 
 use smol_str::SmolStr;
 
+use crate::bytecode::{TypeData, TypeTable};
 use crate::error::RuntimeError;
 use crate::eval::ops::{apply_binary, apply_unary, BinaryOp, UnaryOp};
 use crate::memory::{FrameId, InstanceId, MemoryLocation};
 use crate::task::ProgramDef;
-use crate::value::{RefSegment, Value, ValueRef};
+use crate::value::{size_of_value, RefSegment, SizeOfError, Value, ValueRef};
 
 use super::super::core::Runtime;
 use super::call::{execute_native_call, push_call_frame, VM_LOCAL_SENTINEL_FRAME_ID};
@@ -355,7 +356,28 @@ fn execute_pou(
                 .map_err(VmTrap::into_runtime_error)?,
             0x55 => execute_binary(runtime, &mut operand_stack, BinaryOp::Ge)
                 .map_err(VmTrap::into_runtime_error)?,
-            0x60 => return Err(VmTrap::UnsupportedOpcode("CAST_TYPE").into_runtime_error()),
+            0x60 => {
+                let type_idx =
+                    read_u32(&module.code, &mut pc).map_err(VmTrap::into_runtime_error)?;
+                let size = sizeof_type_from_table(&module.types, type_idx)
+                    .map_err(|err| VmTrap::Runtime(err).into_runtime_error())?;
+                let size = i32::try_from(size)
+                    .map_err(|_| VmTrap::Runtime(RuntimeError::Overflow).into_runtime_error())?;
+                operand_stack
+                    .push(Value::DInt(size))
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
+            0x61 => {
+                let value = operand_stack.pop().map_err(VmTrap::into_runtime_error)?;
+                let size = size_of_value(runtime.registry(), &value)
+                    .map_err(sizeof_error_to_runtime)
+                    .map_err(|err| VmTrap::Runtime(err).into_runtime_error())?;
+                let size = i32::try_from(size)
+                    .map_err(|_| VmTrap::Runtime(RuntimeError::Overflow).into_runtime_error())?;
+                operand_stack
+                    .push(Value::DInt(size))
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
             0x70 => {
                 let _debug_idx =
                     read_u32(&module.code, &mut pc).map_err(VmTrap::into_runtime_error)?;
@@ -689,6 +711,118 @@ fn index_to_i64(value: Value) -> Result<i64, VmTrap> {
         }
         _ => Err(VmTrap::Runtime(RuntimeError::TypeMismatch)),
     }
+}
+
+fn sizeof_error_to_runtime(err: SizeOfError) -> RuntimeError {
+    match err {
+        SizeOfError::Overflow => RuntimeError::Overflow,
+        SizeOfError::UnknownType | SizeOfError::UnsupportedType => RuntimeError::TypeMismatch,
+    }
+}
+
+fn sizeof_type_from_table(types: &TypeTable, type_idx: u32) -> Result<u64, RuntimeError> {
+    let mut stack = Vec::new();
+    sizeof_type_from_table_inner(types, type_idx, &mut stack)
+}
+
+fn sizeof_type_from_table_inner(
+    types: &TypeTable,
+    type_idx: u32,
+    stack: &mut Vec<u32>,
+) -> Result<u64, RuntimeError> {
+    if stack.contains(&type_idx) {
+        return Err(RuntimeError::InvalidBytecode(
+            format!("SIZEOF type recursion at index {type_idx}").into(),
+        ));
+    }
+    let entry = types.entries.get(type_idx as usize).ok_or_else(|| {
+        RuntimeError::InvalidBytecode(format!("invalid type index {type_idx} for SIZEOF").into())
+    })?;
+    stack.push(type_idx);
+    let result = (|| match &entry.data {
+        TypeData::Primitive {
+            prim_id,
+            max_length,
+        } => sizeof_primitive_type(*prim_id, *max_length),
+        TypeData::Array { elem_type_id, dims } => {
+            let elem_size = sizeof_type_from_table_inner(types, *elem_type_id, stack)?;
+            let len = type_array_len(dims).ok_or(RuntimeError::TypeMismatch)?;
+            elem_size.checked_mul(len).ok_or(RuntimeError::Overflow)
+        }
+        TypeData::Struct { fields } => {
+            let mut total = 0u64;
+            for field in fields {
+                let size = sizeof_type_from_table_inner(types, field.type_id, stack)?;
+                total = total.checked_add(size).ok_or(RuntimeError::Overflow)?;
+            }
+            Ok(total)
+        }
+        TypeData::Union { fields } => {
+            let mut max_size = 0u64;
+            for field in fields {
+                let size = sizeof_type_from_table_inner(types, field.type_id, stack)?;
+                max_size = max_size.max(size);
+            }
+            Ok(max_size)
+        }
+        TypeData::Enum { base_type_id, .. } => {
+            sizeof_type_from_table_inner(types, *base_type_id, stack)
+        }
+        TypeData::Alias { target_type_id } => {
+            sizeof_type_from_table_inner(types, *target_type_id, stack)
+        }
+        TypeData::Subrange { base_type_id, .. } => {
+            sizeof_type_from_table_inner(types, *base_type_id, stack)
+        }
+        TypeData::Reference { .. } => {
+            u64::try_from(std::mem::size_of::<ValueRef>()).map_err(|_| RuntimeError::Overflow)
+        }
+        TypeData::Pou { .. } | TypeData::Interface { .. } => Err(RuntimeError::TypeMismatch),
+    })();
+    let _ = stack.pop();
+    result
+}
+
+fn sizeof_primitive_type(prim_id: u16, max_length: u16) -> Result<u64, RuntimeError> {
+    match prim_id {
+        1 | 2 | 6 | 10 | 26 => Ok(1),
+        3 | 7 | 11 | 27 => Ok(2),
+        4 | 8 | 12 | 14 => Ok(4),
+        5 | 9 | 13 | 15 => Ok(8),
+        16 | 18 | 20 | 22 => Ok(4),
+        17 | 19 | 21 | 23 => Ok(8),
+        24 => {
+            if max_length == 0 {
+                Err(RuntimeError::TypeMismatch)
+            } else {
+                Ok(u64::from(max_length))
+            }
+        }
+        25 => {
+            if max_length == 0 {
+                Err(RuntimeError::TypeMismatch)
+            } else {
+                u64::from(max_length)
+                    .checked_mul(2)
+                    .ok_or(RuntimeError::Overflow)
+            }
+        }
+        other => Err(RuntimeError::InvalidBytecode(
+            format!("unsupported primitive type id {other} for SIZEOF").into(),
+        )),
+    }
+}
+
+fn type_array_len(dimensions: &[(i64, i64)]) -> Option<u64> {
+    let mut total: i128 = 1;
+    for (lower, upper) in dimensions {
+        let len = i128::from(*upper) - i128::from(*lower) + 1;
+        if len <= 0 {
+            return None;
+        }
+        total = total.checked_mul(len)?;
+    }
+    u64::try_from(total).ok()
 }
 
 fn runtime_access_target<'a>(

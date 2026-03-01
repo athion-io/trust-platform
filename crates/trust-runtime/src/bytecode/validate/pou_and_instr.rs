@@ -175,6 +175,7 @@ fn validate_instruction_stream(
                 let type_id = reader.read_u32()?;
                 ensure_type_index(types, type_id)?;
             }
+            0x61 => {}
             0x70 => {
                 reader.read_u32()?;
             }

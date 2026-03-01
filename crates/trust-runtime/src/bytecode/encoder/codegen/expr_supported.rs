@@ -5,6 +5,8 @@ fn expr_supported(expr: &crate::eval::expr::Expr) -> bool {
         Expr::Literal(value) => type_id_for_value(value).is_some(),
         Expr::Name(_) => true,
         Expr::This | Expr::Super => true,
+        Expr::SizeOf(crate::eval::expr::SizeOfTarget::Type(_)) => true,
+        Expr::SizeOf(crate::eval::expr::SizeOfTarget::Expr(expr)) => expr_supported(expr),
         Expr::Field { target, field: _ } => expr_supported(target),
         Expr::Index { target, indices } => {
             expr_supported(target) && indices.iter().all(expr_supported)
@@ -41,7 +43,6 @@ fn expr_supported(expr: &crate::eval::expr::Expr) -> bool {
                 Expr::Name(_) | Expr::Field { .. }
             ) && args.iter().all(call_arg_supported)
         }
-        _ => false,
     }
 }
 

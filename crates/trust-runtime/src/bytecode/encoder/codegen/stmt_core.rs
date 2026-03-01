@@ -122,6 +122,11 @@ impl<'a> BytecodeEncoder<'a> {
                     "unsupported C1 CALL_NATIVE lowering path".into(),
                 ));
             }
+            if stmt_contains_c5_required_construct(stmt) {
+                return Err(BytecodeError::InvalidSection(
+                    "unsupported C5 edge-case lowering path".into(),
+                ));
+            }
             code.push(0x00);
         }
         Ok(())
@@ -240,5 +245,102 @@ fn lvalue_contains_call(lvalue: &crate::eval::expr::LValue) -> bool {
         LValue::Field { .. } => false,
         LValue::Index { indices, .. } => indices.iter().any(expr_contains_call),
         LValue::Deref(expr) => expr_contains_call(expr),
+    }
+}
+
+fn stmt_contains_c5_required_construct(stmt: &crate::eval::stmt::Stmt) -> bool {
+    use crate::eval::stmt::Stmt;
+    match stmt {
+        Stmt::Assign { value, .. } => expr_contains_sizeof(value),
+        Stmt::AssignAttempt { .. }
+        | Stmt::Jmp { .. }
+        | Stmt::Return { .. }
+        | Stmt::Exit { .. }
+        | Stmt::Continue { .. } => true,
+        Stmt::Expr { expr, .. } => expr_contains_sizeof(expr),
+        Stmt::If {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+            ..
+        } => {
+            expr_contains_sizeof(condition)
+                || then_block.iter().any(stmt_contains_c5_required_construct)
+                || else_if.iter().any(|(expr, block)| {
+                    expr_contains_sizeof(expr)
+                        || block.iter().any(stmt_contains_c5_required_construct)
+                })
+                || else_block.iter().any(stmt_contains_c5_required_construct)
+        }
+        Stmt::Case {
+            selector,
+            branches,
+            else_block,
+            ..
+        } => {
+            expr_contains_sizeof(selector)
+                || branches
+                    .iter()
+                    .any(|(_, block)| block.iter().any(stmt_contains_c5_required_construct))
+                || else_block.iter().any(stmt_contains_c5_required_construct)
+        }
+        Stmt::While {
+            condition, body, ..
+        } => {
+            expr_contains_sizeof(condition) || body.iter().any(stmt_contains_c5_required_construct)
+        }
+        Stmt::Repeat { body, until, .. } => {
+            body.iter().any(stmt_contains_c5_required_construct) || expr_contains_sizeof(until)
+        }
+        Stmt::For {
+            start,
+            end,
+            step,
+            body,
+            ..
+        } => {
+            expr_contains_sizeof(start)
+                || expr_contains_sizeof(end)
+                || expr_contains_sizeof(step)
+                || body.iter().any(stmt_contains_c5_required_construct)
+        }
+        Stmt::Label { stmt, .. } => stmt
+            .as_deref()
+            .map(stmt_contains_c5_required_construct)
+            .unwrap_or(false),
+    }
+}
+
+fn expr_contains_sizeof(expr: &crate::eval::expr::Expr) -> bool {
+    use crate::eval::expr::Expr;
+    match expr {
+        Expr::SizeOf(_) => true,
+        Expr::Unary { expr, .. } | Expr::Deref(expr) => expr_contains_sizeof(expr),
+        Expr::Binary { left, right, .. } => {
+            expr_contains_sizeof(left) || expr_contains_sizeof(right)
+        }
+        Expr::Index { target, indices } => {
+            expr_contains_sizeof(target) || indices.iter().any(expr_contains_sizeof)
+        }
+        Expr::Field { target, .. } => expr_contains_sizeof(target),
+        Expr::Call { target, args } => {
+            expr_contains_sizeof(target)
+                || args.iter().any(|arg| match &arg.value {
+                    crate::eval::ArgValue::Expr(expr) => expr_contains_sizeof(expr),
+                    crate::eval::ArgValue::Target(target) => lvalue_contains_sizeof(target),
+                })
+        }
+        Expr::Ref(lvalue) => lvalue_contains_sizeof(lvalue),
+        Expr::Literal(_) | Expr::This | Expr::Super | Expr::Name(_) => false,
+    }
+}
+
+fn lvalue_contains_sizeof(lvalue: &crate::eval::expr::LValue) -> bool {
+    use crate::eval::expr::LValue;
+    match lvalue {
+        LValue::Name(_) | LValue::Field { .. } => false,
+        LValue::Index { indices, .. } => indices.iter().any(expr_contains_sizeof),
+        LValue::Deref(expr) => expr_contains_sizeof(expr),
     }
 }

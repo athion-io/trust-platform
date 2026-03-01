@@ -380,3 +380,26 @@ fn differential_c4_reference_deref_and_nested_field_index_chains() {
         1,
     );
 }
+
+#[test]
+fn differential_c5_sizeof_type_and_expression_edge_cases() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_size_type_int : DINT := DINT#0;
+            out_size_expr_s : DINT := DINT#0;
+            out_size_expr_ws : DINT := DINT#0;
+        END_VAR
+
+        out_size_type_int := SIZEOF(INT);
+        out_size_expr_s := SIZEOF('HELLO');
+        out_size_expr_ws := SIZEOF("AB");
+        END_PROGRAM
+    "#;
+
+    assert_backend_parity(
+        source,
+        &["out_size_type_int", "out_size_expr_s", "out_size_expr_ws"],
+        1,
+    );
+}

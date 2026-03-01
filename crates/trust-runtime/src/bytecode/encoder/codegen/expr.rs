@@ -19,6 +19,7 @@ impl<'a> BytecodeEncoder<'a> {
                 code.extend_from_slice(&const_idx.to_le_bytes());
                 Ok(true)
             }
+            crate::eval::expr::Expr::SizeOf(target) => self.emit_sizeof_expr(ctx, target, code),
             crate::eval::expr::Expr::Name(name) => {
                 if let Some(reference) = ctx.local_ref(name) {
                     let ref_idx = self.ref_index_for(reference)?;
@@ -179,7 +180,6 @@ impl<'a> BytecodeEncoder<'a> {
             crate::eval::expr::Expr::Call { target, args } => {
                 self.emit_call_expr(ctx, target, args, code)
             }
-            _ => Ok(false),
         };
         match result {
             Ok(true) => Ok(true),
@@ -190,6 +190,29 @@ impl<'a> BytecodeEncoder<'a> {
             Err(err) => {
                 code.truncate(start_len);
                 Err(err)
+            }
+        }
+    }
+
+    fn emit_sizeof_expr(
+        &mut self,
+        ctx: &CodegenContext,
+        target: &crate::eval::expr::SizeOfTarget,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        match target {
+            crate::eval::expr::SizeOfTarget::Type(type_id) => {
+                let type_idx = self.type_index(*type_id)?;
+                code.push(0x60); // SIZEOF_TYPE
+                code.extend_from_slice(&type_idx.to_le_bytes());
+                Ok(true)
+            }
+            crate::eval::expr::SizeOfTarget::Expr(expr) => {
+                if !self.emit_expr(ctx, expr, code)? {
+                    return Ok(false);
+                }
+                code.push(0x61); // SIZEOF_VALUE
+                Ok(true)
             }
         }
     }
