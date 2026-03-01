@@ -61,6 +61,9 @@ package "Execution Backend Boundary" as backendPkg #LightYellow {
 
     package "Bytecode VM Core\n(runtime/vm/*)" as vmCore #LightCyan {
         component "dispatch.rs\n(PC loop + op dispatch + debug hook emit)" as vmDispatch
+        component "dispatch_ops.rs\n(opcode math/operand/jump helpers)" as vmDispatchOps
+        component "dispatch_refs.rs\n(ref/deref + storage bridge)" as vmDispatchRefs
+        component "dispatch_sizeof.rs\n(TYPE_TABLE sizeof helpers)" as vmDispatchSizeOf
         component "stack.rs\n(operand stack invariants)" as vmStack
         component "frames.rs + call.rs\n(frame stack + CALL_NATIVE dispatch bridge)" as vmFrames
         component "errors.rs\n(trap -> RuntimeError)" as vmErrors
@@ -72,6 +75,9 @@ package "Execution Backend Boundary" as backendPkg #LightYellow {
     vmDispatch ..> vmFrames
     vmDispatch ..> vmErrors
     vmDispatch ..> vmDebugMap
+    vmDispatch ..> vmDispatchOps
+    vmDispatch ..> vmDispatchRefs
+    vmDispatch ..> vmDispatchSizeOf
     vmDispatch ..> runtime : resolve vm debug source labels/offsets
 }
 

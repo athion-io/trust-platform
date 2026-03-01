@@ -17,12 +17,18 @@ use crate::value::{
 mod call;
 mod debug_map;
 mod dispatch;
+mod dispatch_ops;
+mod dispatch_refs;
+mod dispatch_sizeof;
 mod errors;
 mod frames;
 mod stack;
 
 // VM module ownership notes (Phase B):
-// - dispatch: instruction pointer loop + opcode dispatch + storage access bridge.
+// - dispatch: instruction pointer loop + opcode routing + debug-hook emission.
+// - dispatch_ops: arithmetic/logic execution helpers + operand/jump decoding.
+// - dispatch_refs: ref/deref chain execution and storage bridge helpers.
+// - dispatch_sizeof: TYPE_TABLE driven SIZEOF evaluation helpers.
 // - stack: operand stack invariants and overflow/underflow enforcement.
 // - frames/call: call-stack and frame lifecycle.
 // - errors: VM trap taxonomy and stable RuntimeError mapping.
