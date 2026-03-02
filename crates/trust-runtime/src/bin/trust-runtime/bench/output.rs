@@ -49,6 +49,61 @@ fn render_table(report: &BenchReport) -> String {
             );
             render_histogram(&mut out, data.histogram.as_slice());
         }
+        BenchReport::ExecutionBackend(data) => {
+            let _ = writeln!(out, "Benchmark: {}", data.scenario);
+            let _ = writeln!(
+                out,
+                "corpus={} cycles_per_fixture={} warmup_cycles={}",
+                data.corpus, data.cycles_per_fixture, data.warmup_cycles
+            );
+            for fixture in &data.fixtures {
+                let _ = writeln!(out, "fixture={}", fixture.fixture);
+                render_latency_block(
+                    &mut out,
+                    "  interpreter latency",
+                    &fixture.interpreter.latency,
+                );
+                let _ = writeln!(
+                    out,
+                    "  interpreter throughput={:.3} cycles/sec",
+                    fixture.interpreter.throughput_cycles_per_sec
+                );
+                render_latency_block(&mut out, "  vm latency", &fixture.vm.latency);
+                let _ = writeln!(
+                    out,
+                    "  vm throughput={:.3} cycles/sec",
+                    fixture.vm.throughput_cycles_per_sec
+                );
+                let _ = writeln!(
+                    out,
+                    "  ratios vm/interpreter: median={:.4} p99={:.4} throughput={:.4}",
+                    fixture.median_latency_ratio, fixture.p99_latency_ratio, fixture.throughput_ratio
+                );
+            }
+            let aggregate = &data.aggregate;
+            let _ = writeln!(out, "aggregate:");
+            render_latency_block(
+                &mut out,
+                "  interpreter latency",
+                &aggregate.interpreter.latency,
+            );
+            let _ = writeln!(
+                out,
+                "  interpreter throughput={:.3} cycles/sec",
+                aggregate.interpreter.throughput_cycles_per_sec
+            );
+            render_latency_block(&mut out, "  vm latency", &aggregate.vm.latency);
+            let _ = writeln!(
+                out,
+                "  vm throughput={:.3} cycles/sec",
+                aggregate.vm.throughput_cycles_per_sec
+            );
+            let _ = writeln!(
+                out,
+                "  ratios vm/interpreter: median={:.4} p99={:.4} throughput={:.4}",
+                aggregate.median_latency_ratio, aggregate.p99_latency_ratio, aggregate.throughput_ratio
+            );
+        }
     }
     out
 }

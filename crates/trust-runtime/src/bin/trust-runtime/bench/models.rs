@@ -52,6 +52,32 @@ struct DispatchBenchReport {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct BackendComparisonSummary {
+    latency: LatencySummary,
+    throughput_cycles_per_sec: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExecutionBackendFixtureReport {
+    fixture: &'static str,
+    interpreter: BackendComparisonSummary,
+    vm: BackendComparisonSummary,
+    median_latency_ratio: f64,
+    p99_latency_ratio: f64,
+    throughput_ratio: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExecutionBackendBenchReport {
+    scenario: &'static str,
+    corpus: &'static str,
+    cycles_per_fixture: usize,
+    warmup_cycles: usize,
+    fixtures: Vec<ExecutionBackendFixtureReport>,
+    aggregate: ExecutionBackendFixtureReport,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "benchmark", content = "report")]
 enum BenchReport {
     #[serde(rename = "t0-shm")]
@@ -60,6 +86,8 @@ enum BenchReport {
     MeshZenoh(MeshZenohBenchReport),
     #[serde(rename = "dispatch")]
     Dispatch(DispatchBenchReport),
+    #[serde(rename = "execution-backend")]
+    ExecutionBackend(ExecutionBackendBenchReport),
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +153,24 @@ impl DispatchBenchWorkload {
         Ok(Self {
             base: BenchWorkload::normalize(samples, payload_bytes)?,
             fanout,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExecutionBackendBenchWorkload {
+    samples: usize,
+    warmup_cycles: usize,
+}
+
+impl ExecutionBackendBenchWorkload {
+    fn normalize(samples: usize, warmup_cycles: usize) -> anyhow::Result<Self> {
+        if samples == 0 {
+            anyhow::bail!("--samples must be greater than zero");
+        }
+        Ok(Self {
+            samples,
+            warmup_cycles,
         })
     }
 }

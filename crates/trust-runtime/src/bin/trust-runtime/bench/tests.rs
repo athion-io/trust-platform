@@ -90,3 +90,33 @@ fn mesh_workload_rejects_out_of_range_rates() {
     let err = MeshBenchWorkload::normalize(10, 32, 0.0, 1.1).expect_err("invalid rate");
     assert!(err.to_string().contains("--reorder-rate"));
 }
+
+#[test]
+fn execution_backend_bench_json_output_contains_ratio_fields() {
+    let (report, format) = execute_bench(BenchAction::ExecutionBackend {
+        samples: 32,
+        warmup_cycles: 8,
+        output: BenchOutputFormat::Json,
+    })
+    .expect("run execution backend benchmark");
+    let rendered = render_bench_output(&report, format).expect("render json");
+    let value: serde_json::Value = serde_json::from_str(&rendered).expect("parse bench json");
+    assert_eq!(
+        value.get("benchmark").and_then(serde_json::Value::as_str),
+        Some("execution-backend")
+    );
+    assert_eq!(
+        value
+            .pointer("/report/corpus")
+            .and_then(serde_json::Value::as_str),
+        Some("mp-060-corpus-v1")
+    );
+    assert!(value
+        .pointer("/report/aggregate/median_latency_ratio")
+        .and_then(serde_json::Value::as_f64)
+        .is_some());
+    assert!(value
+        .pointer("/report/aggregate/throughput_ratio")
+        .and_then(serde_json::Value::as_f64)
+        .is_some());
+}

@@ -455,4 +455,34 @@ mod tests {
             other => panic!("expected bench command, got {other:?}"),
         }
     }
+
+    #[test]
+    fn parse_bench_execution_backend_command() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "bench",
+            "execution-backend",
+            "--samples",
+            "300",
+            "--warmup-cycles",
+            "50",
+            "--output",
+            "json",
+        ]);
+        match cli.command.expect("command") {
+            Command::Bench { action } => match action {
+                BenchAction::ExecutionBackend {
+                    samples,
+                    warmup_cycles,
+                    output,
+                } => {
+                    assert_eq!(samples, 300);
+                    assert_eq!(warmup_cycles, 50);
+                    assert_eq!(output, BenchOutputFormat::Json);
+                }
+                other => panic!("expected bench execution-backend action, got {other:?}"),
+            },
+            other => panic!("expected bench command, got {other:?}"),
+        }
+    }
 }

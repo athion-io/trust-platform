@@ -198,6 +198,12 @@ jobs:
           OUT_DIR=gate-artifacts/runtime-comms-bench \
           TRUST_COMMS_BENCH_SAMPLES=256 \
           ./scripts/runtime_comms_bench_gate.sh
+      - name: Capture MP-060 interpreter-vs-VM benchmark evidence (quick profile)
+        run: |
+          OUT_DIR=gate-artifacts/runtime-vm-bench \
+          TRUST_VM_BENCH_PROFILE=quick \
+          TRUST_VM_BENCH_ENFORCE_THRESHOLDS=0 \
+          ./scripts/runtime_vm_bench_gate.sh
       - name: Enforce runtime cloud security profile evidence gate
         run: |
           OUT_DIR=gate-artifacts/runtime-cloud-security-profiles \
@@ -218,6 +224,7 @@ jobs:
             gate-artifacts/conformance-pass-*.json
             gate-artifacts/runtime-comms-fuzz/**
             gate-artifacts/runtime-comms-bench/**
+            gate-artifacts/runtime-vm-bench/**
             gate-artifacts/runtime-cloud-security-profiles/**
             gate-artifacts/runtime-comms-conformance/**
       - name: Mark gate success

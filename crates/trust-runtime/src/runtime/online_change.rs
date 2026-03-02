@@ -1,7 +1,5 @@
 //! Online-change and hot-reload semantics.
 
-#![allow(missing_docs)]
-
 use crate::error;
 
 use super::core::Runtime;
