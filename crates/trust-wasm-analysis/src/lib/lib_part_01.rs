@@ -6,6 +6,7 @@ use trust_hir::db::FileId;
 use trust_hir::project::{Project, SourceKey};
 use trust_hir::DiagnosticSeverity;
 use trust_ide::StdlibFilter;
+use trust_expression_eval::{Evaluator, Variable, Value};
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 use wasm_bindgen::prelude::wasm_bindgen;
