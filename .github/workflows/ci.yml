@@ -347,8 +347,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run compile
-      - name: Build trust-lsp test server
-        run: cargo build -p trust-lsp
+      - name: Build trust-lsp + trust-debug test binaries
+        run: cargo build -p trust-lsp -p trust-debug
         working-directory: ${{ github.workspace }}
       - name: Add trust-lsp binary directory to PATH
         run: echo "${{ github.workspace }}/target/debug" >> "$GITHUB_PATH"
