@@ -22,12 +22,14 @@ pub(super) fn load_ref(
         .ok_or(VmTrap::InvalidRefIndex(ref_idx))?;
 
     match reference {
-        VmRef::Local { path, .. } => {
-            if !path.is_empty() {
-                return Err(VmTrap::UnsupportedRefLocation("local-path"));
-            }
+        VmRef::Local { offset, path, .. } => {
             let frame = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
-            frame.load_local(ref_idx)
+            if path.is_empty() {
+                frame.load_local(ref_idx)
+            } else {
+                let slot = *offset;
+                read_vm_local_ref(frame, slot, path)
+            }
         }
         _ => {
             let frame = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
@@ -51,16 +53,12 @@ pub(super) fn load_ref_addr(
         .get(ref_idx as usize)
         .ok_or(VmTrap::InvalidRefIndex(ref_idx))?;
     match reference {
-        VmRef::Local { path, .. } => {
-            if !path.is_empty() {
-                return Err(VmTrap::UnsupportedRefLocation("local-path"));
-            }
-            let frame = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
-            let local_slot = frame.local_slot_index(ref_idx)?;
+        VmRef::Local { offset, path, .. } => {
+            let _ = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
             Ok(ValueRef {
                 location: MemoryLocation::Local(FrameId(VM_LOCAL_SENTINEL_FRAME_ID)),
-                offset: local_slot,
-                path: Vec::new(),
+                offset: *offset,
+                path: path.clone(),
             })
         }
         _ => {
@@ -88,12 +86,14 @@ pub(super) fn store_ref(
         .ok_or(VmTrap::InvalidRefIndex(ref_idx))?;
 
     match reference {
-        VmRef::Local { path, .. } => {
-            if !path.is_empty() {
-                return Err(VmTrap::UnsupportedRefLocation("local-path"));
-            }
+        VmRef::Local { offset, path, .. } => {
             let frame = frames.current_mut().ok_or(VmTrap::CallStackUnderflow)?;
-            frame.store_local(ref_idx, value)
+            if path.is_empty() {
+                frame.store_local(ref_idx, value)
+            } else {
+                let slot = *offset;
+                write_vm_local_ref(frame, slot, path, value)
+            }
         }
         _ => {
             let frame = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
@@ -148,13 +148,37 @@ pub(super) fn dynamic_ref_index(
     mut reference: ValueRef,
     index: i64,
 ) -> Result<ValueRef, VmTrap> {
+    // Support chained indexing for multidimensional arrays by extending a trailing
+    // partial index segment (e.g. [i] -> [i, j]) against the base array dimensions.
+    if let Some(RefSegment::Index(existing)) = reference.path.last().cloned() {
+        let mut base_reference = reference.clone();
+        let _ = base_reference.path.pop();
+        if let Value::Array(array) = dynamic_load_ref(runtime, frames, &base_reference)? {
+            if existing.len() < array.dimensions.len() {
+                let (lower, upper) = array.dimensions[existing.len()];
+                if index < lower || index > upper {
+                    return Err(VmTrap::Runtime(RuntimeError::IndexOutOfBounds {
+                        index,
+                        lower,
+                        upper,
+                    }));
+                }
+                let mut combined = existing;
+                combined.push(index);
+                if let Some(RefSegment::Index(indices)) = reference.path.last_mut() {
+                    *indices = combined;
+                    return Ok(reference);
+                }
+            }
+        }
+    }
+
     let target = dynamic_load_ref(runtime, frames, &reference)?;
     match target {
         Value::Array(array) => {
-            if array.dimensions.len() != 1 {
+            let Some((lower, upper)) = array.dimensions.first().copied() else {
                 return Err(VmTrap::Runtime(RuntimeError::TypeMismatch));
-            }
-            let (lower, upper) = array.dimensions[0];
+            };
             if index < lower || index > upper {
                 return Err(VmTrap::Runtime(RuntimeError::IndexOutOfBounds {
                     index,

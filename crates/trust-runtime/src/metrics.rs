@@ -171,7 +171,7 @@ impl RuntimeMetrics {
     pub fn new() -> Self {
         Self {
             start: Instant::now(),
-            execution_backend: ExecutionBackend::Interpreter,
+            execution_backend: ExecutionBackend::BytecodeVm,
             cycle: CycleStats::default(),
             tasks: HashMap::new(),
             profiling_enabled: true,

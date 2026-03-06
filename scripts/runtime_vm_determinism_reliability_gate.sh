@@ -28,7 +28,7 @@ for run in $(seq 1 "${ITERATIONS}"); do
   json_path="${OUT_DIR}/bytecode-vm-differential-run-${run}.json"
 
   started_ns="$(date +%s%N)"
-  cargo test -p trust-runtime --test bytecode_vm_differential -- --test-threads="${TEST_THREADS}" \
+  cargo test -p trust-runtime --features legacy-interpreter --test bytecode_vm_differential -- --test-threads="${TEST_THREADS}" \
     | tee "${log_path}"
   ended_ns="$(date +%s%N)"
   duration_ms="$(( (ended_ns - started_ns) / 1000000 ))"

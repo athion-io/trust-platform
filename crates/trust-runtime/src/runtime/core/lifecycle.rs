@@ -3,7 +3,7 @@ impl Runtime {
     #[must_use]
     pub fn new() -> Self {
         let mut runtime = Self {
-            execution_backend: crate::execution_backend::ExecutionBackend::Interpreter,
+            execution_backend: crate::execution_backend::ExecutionBackend::BytecodeVm,
             vm_module: None,
             profile: DateTimeProfile::default(),
             storage: VariableStorage::default(),
@@ -33,6 +33,10 @@ impl Runtime {
             watchdog: WatchdogSubsystem::new(),
             faults: FaultSubsystem::new(),
             execution_deadline: None,
+            vm_register_lowering_cache: super::vm::RegisterLoweringCacheState::from_env(),
+            vm_register_profile: super::vm::RegisterProfileState::default(),
+            vm_tier1_specialized_executor:
+                super::vm::RegisterTier1SpecializedExecutorState::from_env(),
         };
         runtime.register_builtin_function_blocks();
         runtime

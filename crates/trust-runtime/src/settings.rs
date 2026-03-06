@@ -41,7 +41,7 @@ impl RuntimeSettings {
     ) -> Self {
         Self {
             cycle_interval,
-            execution_backend: ExecutionBackend::Interpreter,
+            execution_backend: ExecutionBackend::BytecodeVm,
             execution_backend_source: ExecutionBackendSource::Default,
             log_level: base.log_level,
             watchdog: base.watchdog,

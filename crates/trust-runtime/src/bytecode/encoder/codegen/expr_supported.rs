@@ -2,7 +2,9 @@ fn expr_supported(expr: &crate::eval::expr::Expr) -> bool {
     use crate::eval::expr::Expr;
     use crate::eval::ops::{BinaryOp, UnaryOp};
     match expr {
-        Expr::Literal(value) => type_id_for_value(value).is_some(),
+        Expr::Literal(value) => {
+            type_id_for_value(value).is_some() || matches!(value, crate::value::Value::Null)
+        }
         Expr::Name(_) => true,
         Expr::This | Expr::Super => true,
         Expr::SizeOf(crate::eval::expr::SizeOfTarget::Type(_)) => true,

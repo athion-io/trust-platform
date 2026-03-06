@@ -37,7 +37,7 @@ pub enum Command {
         /// Simulation time acceleration factor (>= 1).
         #[arg(long, default_value_t = 1)]
         time_scale: u32,
-        /// Override execution backend (`interpreter` or `vm`).
+        /// Override execution backend (`vm`).
         #[arg(long = "execution-backend", value_enum)]
         execution_backend: Option<ExecutionBackendArg>,
     },
@@ -67,7 +67,7 @@ pub enum Command {
         /// Simulation time acceleration factor (>= 1).
         #[arg(long, default_value_t = 1)]
         time_scale: u32,
-        /// Override execution backend (`interpreter` or `vm`).
+        /// Override execution backend (`vm`).
         #[arg(long = "execution-backend", value_enum)]
         execution_backend: Option<ExecutionBackendArg>,
     },
@@ -327,6 +327,5 @@ pub enum ConfigUiAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ExecutionBackendArg {
-    Interpreter,
     Vm,
 }

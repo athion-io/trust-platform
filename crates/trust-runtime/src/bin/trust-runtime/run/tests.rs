@@ -88,11 +88,12 @@ fn simulation_warning_omitted_in_production_mode() {
 }
 
 #[test]
-fn execution_backend_selection_defaults_to_interpreter() {
-    let (backend, source) = super::resolve_execution_backend_selection(None, None);
+fn execution_backend_selection_defaults_to_vm() {
+    let (backend, source) =
+        super::resolve_execution_backend_selection(None, None).expect("resolve backend");
     assert_eq!(
         backend,
-        trust_runtime::execution_backend::ExecutionBackend::Interpreter
+        trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
     );
     assert_eq!(
         source,
@@ -103,7 +104,8 @@ fn execution_backend_selection_defaults_to_interpreter() {
 #[test]
 fn execution_backend_selection_prefers_cli_override() {
     let (backend, source) =
-        super::resolve_execution_backend_selection(None, Some(crate::cli::ExecutionBackendArg::Vm));
+        super::resolve_execution_backend_selection(None, Some(crate::cli::ExecutionBackendArg::Vm))
+            .expect("resolve backend");
     assert_eq!(
         backend,
         trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
@@ -119,7 +121,8 @@ fn execution_backend_selection_uses_bundle_when_cli_absent() {
     let bundle =
         bundle_with_backend(trust_runtime::execution_backend::ExecutionBackend::BytecodeVm);
 
-    let (backend, source) = super::resolve_execution_backend_selection(Some(&bundle), None);
+    let (backend, source) =
+        super::resolve_execution_backend_selection(Some(&bundle), None).expect("resolve backend");
     assert_eq!(
         backend,
         trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
@@ -133,32 +136,15 @@ fn execution_backend_selection_uses_bundle_when_cli_absent() {
 #[test]
 fn execution_backend_selection_cli_overrides_bundle() {
     let bundle =
-        bundle_with_backend(trust_runtime::execution_backend::ExecutionBackend::Interpreter);
-    let (backend, source) = super::resolve_execution_backend_selection(
-        Some(&bundle),
-        Some(crate::cli::ExecutionBackendArg::Vm),
-    );
-    assert_eq!(
-        backend,
-        trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
-    );
-    assert_eq!(
-        source,
-        trust_runtime::execution_backend::ExecutionBackendSource::Flag
-    );
-}
-
-#[test]
-fn execution_backend_selection_cli_interpreter_overrides_vm_bundle() {
-    let bundle =
         bundle_with_backend(trust_runtime::execution_backend::ExecutionBackend::BytecodeVm);
     let (backend, source) = super::resolve_execution_backend_selection(
         Some(&bundle),
-        Some(crate::cli::ExecutionBackendArg::Interpreter),
-    );
+        Some(crate::cli::ExecutionBackendArg::Vm),
+    )
+    .expect("resolve backend");
     assert_eq!(
         backend,
-        trust_runtime::execution_backend::ExecutionBackend::Interpreter
+        trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
     );
     assert_eq!(
         source,

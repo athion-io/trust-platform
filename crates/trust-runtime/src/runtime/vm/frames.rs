@@ -3,7 +3,19 @@ use crate::value::Value;
 
 use super::errors::VmTrap;
 
-const MAX_CALL_DEPTH: usize = 1024;
+pub(super) const VM_MAX_CALL_DEPTH: usize = 1024;
+
+pub(super) fn ensure_global_call_depth(
+    depth_offset: u32,
+    local_depth: usize,
+) -> Result<(), VmTrap> {
+    let base_depth = usize::try_from(depth_offset).unwrap_or(usize::MAX);
+    let total_depth = base_depth.saturating_add(local_depth);
+    if total_depth > VM_MAX_CALL_DEPTH {
+        return Err(VmTrap::CallStackOverflow);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct VmFrame {
@@ -62,8 +74,12 @@ pub(super) struct FrameStack {
 }
 
 impl FrameStack {
+    pub(super) fn clear(&mut self) {
+        self.frames.clear();
+    }
+
     pub(super) fn push(&mut self, frame: VmFrame) -> Result<(), VmTrap> {
-        if self.frames.len() >= MAX_CALL_DEPTH {
+        if self.frames.len() >= VM_MAX_CALL_DEPTH {
             return Err(VmTrap::CallStackOverflow);
         }
         self.frames.push(frame);

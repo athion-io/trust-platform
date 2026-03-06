@@ -27,7 +27,7 @@ pub(super) fn handle_status(id: u64, state: &ControlState) -> ControlResponse {
     let execution_backend = settings
         .as_ref()
         .map(|cfg| cfg.execution_backend.as_str())
-        .unwrap_or("interpreter");
+        .unwrap_or("vm");
     let execution_backend_source = settings
         .as_ref()
         .map(|cfg| cfg.execution_backend_source.as_str())

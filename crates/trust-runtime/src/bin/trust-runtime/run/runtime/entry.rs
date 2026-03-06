@@ -20,7 +20,7 @@ pub fn run_runtime(
         ide_shell_mode,
     } = load_runtime(project, config, runtime_root)?;
     let (selected_execution_backend, selected_execution_backend_source) =
-        resolve_execution_backend_selection(bundle.as_ref(), execution_backend);
+        resolve_execution_backend_selection(bundle.as_ref(), execution_backend)?;
 
     let simulation = build_simulation_plan(bundle.as_ref(), simulation, time_scale)?;
     let SimulationPlan {
@@ -431,32 +431,29 @@ fn parse_restart_mode(restart: &str) -> anyhow::Result<RestartMode> {
 fn resolve_execution_backend_selection(
     bundle: Option<&RuntimeBundle>,
     cli_override: Option<crate::cli::ExecutionBackendArg>,
-) -> (
+) -> anyhow::Result<(
     trust_runtime::execution_backend::ExecutionBackend,
     trust_runtime::execution_backend::ExecutionBackendSource,
-) {
+) > {
     if let Some(backend) = cli_override {
         let backend = match backend {
-            crate::cli::ExecutionBackendArg::Interpreter => {
-                trust_runtime::execution_backend::ExecutionBackend::Interpreter
-            }
             crate::cli::ExecutionBackendArg::Vm => {
                 trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
             }
         };
-        return (
+        return Ok((
             backend,
             trust_runtime::execution_backend::ExecutionBackendSource::Flag,
-        );
+        ));
     }
     if let Some(bundle) = bundle {
-        return (
+        return Ok((
             bundle.runtime.execution_backend,
             bundle.runtime.execution_backend_source,
-        );
+        ));
     }
-    (
-        trust_runtime::execution_backend::ExecutionBackend::Interpreter,
+    Ok((
+        trust_runtime::execution_backend::ExecutionBackend::BytecodeVm,
         trust_runtime::execution_backend::ExecutionBackendSource::Default,
-    )
+    ))
 }

@@ -10,6 +10,10 @@ pub(super) struct OperandStack {
 }
 
 impl OperandStack {
+    pub(super) fn clear(&mut self) {
+        self.values.clear();
+    }
+
     pub(super) fn push(&mut self, value: Value) -> Result<(), VmTrap> {
         if self.values.len() >= MAX_OPERAND_STACK {
             return Err(VmTrap::StackOverflow);

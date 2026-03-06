@@ -26,14 +26,21 @@ impl RuntimeToml {
         let (execution_backend, execution_backend_source) =
             match execution_backend.as_deref().map(str::trim) {
                 Some(value) if !value.is_empty() => {
-                    (ExecutionBackend::parse(value)?, ExecutionBackendSource::Config)
+                    if value.eq_ignore_ascii_case("interpreter") {
+                        return Err(RuntimeError::InvalidConfig(
+                            "runtime.execution_backend='interpreter' is no longer supported for production runtimes; use 'vm'"
+                                .into(),
+                        ));
+                    }
+                    let backend = ExecutionBackend::parse(value)?;
+                    (backend, ExecutionBackendSource::Config)
                 }
                 Some(_) => {
                     return Err(RuntimeError::InvalidConfig(
                         "runtime.execution_backend must not be empty".into(),
                     ));
                 }
-                None => (ExecutionBackend::Interpreter, ExecutionBackendSource::Default),
+                None => (ExecutionBackend::BytecodeVm, ExecutionBackendSource::Default),
             };
 
         let parsed_control = parse_control(&control)?;

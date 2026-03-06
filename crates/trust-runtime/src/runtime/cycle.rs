@@ -5,10 +5,14 @@
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
+use crate::error;
+#[cfg(feature = "legacy-interpreter")]
 use crate::eval::{self, EvalContext};
+#[cfg(feature = "legacy-interpreter")]
+use crate::stdlib;
 use crate::task::{ProgramDef, TaskConfig};
 use crate::value::{Duration, Value};
-use crate::{error, stdlib};
+#[cfg(feature = "legacy-interpreter")]
 use trust_hir::symbols::ParamDirection;
 
 use super::core::Runtime;
@@ -136,6 +140,7 @@ impl Runtime {
         backend.execute_program(self, program)
     }
 
+    #[cfg(feature = "legacy-interpreter")]
     pub(super) fn execute_program_interpreter(
         &mut self,
         program: &ProgramDef,
@@ -334,6 +339,7 @@ impl Runtime {
         backend.execute_function_block_ref(self, reference)
     }
 
+    #[cfg(feature = "legacy-interpreter")]
     pub(super) fn execute_function_block_ref_interpreter(
         &mut self,
         reference: &crate::value::ValueRef,

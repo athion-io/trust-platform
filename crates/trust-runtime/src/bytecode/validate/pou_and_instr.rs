@@ -95,7 +95,7 @@ fn validate_instruction_stream(
         starts.push(pc as i32);
         let opcode = reader.read_u8()?;
         match opcode {
-            0x00 | 0x01 | 0x06 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x31 | 0x32 | 0x33 | 0x40
+            0x00 | 0x01 | 0x06 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x25 | 0x31 | 0x32 | 0x33 | 0x40
             | 0x41 | 0x42 | 0x43 | 0x44 | 0x45 | 0x46 | 0x47 | 0x48 | 0x49 | 0x4A | 0x4B | 0x4C
             | 0x4D | 0x4E | 0x50 | 0x51 | 0x52 | 0x53 | 0x54 | 0x55 => {}
             0x02..=0x04 => {
@@ -176,6 +176,10 @@ fn validate_instruction_stream(
                 ensure_type_index(types, type_id)?;
             }
             0x61 => {}
+            0x62 | 0x63 => {
+                let operand = reader.read_u32()?;
+                validate_partial_access_operand(operand)?;
+            }
             0x70 => {
                 reader.read_u32()?;
             }
@@ -192,6 +196,29 @@ fn validate_instruction_stream(
         if target != code_len && !start_set.contains(&target) {
             return Err(BytecodeError::InvalidJumpTarget(target));
         }
+    }
+    Ok(())
+}
+
+fn validate_partial_access_operand(operand: u32) -> Result<(), BytecodeError> {
+    if (operand & !0x3FF) != 0 {
+        return Err(BytecodeError::InvalidSection(
+            "partial-access operand out of range".into(),
+        ));
+    }
+    let kind = (operand >> 8) & 0x03;
+    let index = (operand & 0xFF) as u8;
+    let max = match kind {
+        0 => 63, // bit
+        1 => 7,  // byte
+        2 => 3,  // word
+        3 => 1,  // dword
+        _ => unreachable!(),
+    };
+    if index > max {
+        return Err(BytecodeError::InvalidSection(
+            "partial-access index out of range".into(),
+        ));
     }
     Ok(())
 }

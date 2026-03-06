@@ -1,50 +1,47 @@
-# Runtime Execution Backend Migration and Compatibility Policy
+# Runtime Execution Backend Migration Policy
 
-This note defines the MP-060 rollout contract for selecting runtime execution backends and for keeping interpreter rollback support available during VM-default migration.
+This note defines the MP-060 production backend contract after VM-default cutover.
 
-## Backend controls
+## Production backend controls
 
 - Startup configuration:
-  - `runtime.execution_backend = "interpreter"|"vm"` in `runtime.toml`.
+  - `runtime.execution_backend = "vm"` in `runtime.toml`.
+  - `runtime.execution_backend = "interpreter"` is rejected by runtime config validation.
 - CLI override:
-  - `--execution-backend=interpreter|vm` on `trust-runtime run` and `trust-runtime play`.
+  - `--execution-backend=vm` on `trust-runtime run` and `trust-runtime play`.
+  - `--execution-backend=interpreter` is rejected by CLI argument parsing.
 - Runtime control plane:
   - Live `config.set` writes to `runtime.execution_backend` are rejected.
-  - Backend changes require explicit startup-time operator action (CLI/config + restart).
+  - Backend changes remain startup-boundary only.
 
-## Compatibility mode policy (MP-060 rollout)
+## Interpreter policy
 
-- Before VM default switch:
-  - Interpreter remains the default backend.
-  - VM is opt-in via CLI/config.
-- At VM default switch milestone:
-  - Interpreter remains an explicit opt-in compatibility mode.
-  - Compatibility mode must remain supported for two release cycles after the switch.
-- During that two-release window:
-  - `--execution-backend=interpreter` must keep taking precedence over bundle config.
-  - `runtime.execution_backend = "interpreter"` must remain accepted by config validation.
-  - No automatic mid-cycle backend switching is permitted.
+- Interpreter execution is retained only behind opt-in `legacy-interpreter` feature builds as a parity/test oracle.
+- Allowed contexts:
+  - differential suites and parity checks (`bytecode_vm_differential`, selected debug/runtime parity tests),
+  - benchmark comparison surfaces that explicitly compare VM vs interpreter (`bench execution-backend`).
+- Not allowed in production run/play startup selection.
 
 ## Enforcement and evidence
 
-- Runtime/tests enforcing compatibility controls:
+- Runtime/tests enforcing VM-only production selection:
   - `crates/trust-runtime/src/bin/trust-runtime/run/tests.rs`:
-    - `execution_backend_selection_cli_interpreter_overrides_vm_bundle`
-    - `execution_backend_selection_cli_overrides_bundle`
-  - `crates/trust-runtime/tests/api_smoke.rs`:
-    - `runtime_rolls_back_to_interpreter_with_loaded_bytecode`
+    - `execution_backend_selection_defaults_to_vm`
+    - `execution_backend_selection_uses_bundle_when_cli_absent`
+  - `crates/trust-runtime/src/config/tests.rs`:
+    - `runtime_schema_rejects_interpreter_execution_backend_for_production`
+    - `runtime_config_load_defaults_execution_backend_source_when_omitted`
   - `crates/trust-runtime/src/control/tests/core.rs`:
     - `config_set_rejects_runtime_backend_switch_during_live_control`
 - CI release-evidence gates:
   - `.github/workflows/ci.yml` job `version-release-guard`.
   - `scripts/check_release_version_alignment.py` (workspace + VS Code version sync).
   - `scripts/check_version_release_evidence.py` (tag/workflow/release evidence on main/master version bumps).
-  - `release-gate-report` artifact must include `gate-version-release-guard`.
 
 ## Operator migration expectations
 
-1. Keep production runtime config explicit (`runtime.execution_backend`) during rollout.
-2. Use CLI override for emergency rollback without rebuild:
-   - `trust-runtime run --execution-backend=interpreter ...`
-3. Treat backend changes as restart-boundary operations, never in-flight cycle edits.
-4. Track release notes for the VM default-switch release and the two subsequent compatibility-window releases.
+1. Remove legacy `runtime.execution_backend = "interpreter"` from all production projects.
+2. Use `runtime.execution_backend = "vm"` (or omit backend field and rely on VM default).
+3. Treat backend mode as startup-only; no in-flight backend switching.
+4. For legacy interpreter behavior investigation, run dedicated differential/benchmark workflows rather than production startup with interpreter.
+   - use `--features legacy-interpreter` on dedicated parity/benchmark commands.

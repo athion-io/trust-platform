@@ -61,6 +61,9 @@ pub struct Runtime {
     pub(super) watchdog: WatchdogSubsystem,
     pub(super) faults: FaultSubsystem,
     pub(super) execution_deadline: Option<std::time::Instant>,
+    pub(super) vm_register_lowering_cache: super::vm::RegisterLoweringCacheState,
+    pub(super) vm_register_profile: super::vm::RegisterProfileState,
+    pub(super) vm_tier1_specialized_executor: super::vm::RegisterTier1SpecializedExecutorState,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -88,6 +91,14 @@ impl std::fmt::Debug for Runtime {
             .field("cycle_counter", &self.cycle_counter)
             .field("faulted", &self.faults.is_faulted())
             .field("last_fault", &self.faults.last_fault())
+            .field(
+                "vm_register_lowering_cache_enabled",
+                &self.vm_register_lowering_cache.snapshot().enabled,
+            )
+            .field(
+                "vm_tier1_specialized_executor_enabled",
+                &self.vm_tier1_specialized_executor.snapshot().enabled,
+            )
             .finish()
     }
 }

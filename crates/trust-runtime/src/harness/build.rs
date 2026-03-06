@@ -288,6 +288,13 @@ pub(super) fn build_bytecode_module_from_source_files(
     label_errors: bool,
 ) -> Result<crate::bytecode::BytecodeModule, CompileError> {
     let runtime = build_runtime_from_source_files(sources, label_errors)?;
+    build_bytecode_module_from_runtime_and_sources(&runtime, sources)
+}
+
+fn build_bytecode_module_from_runtime_and_sources(
+    runtime: &Runtime,
+    sources: &[SourceFile],
+) -> Result<crate::bytecode::BytecodeModule, CompileError> {
     let source_refs = sources
         .iter()
         .map(|source| source.text.as_str())
@@ -298,13 +305,13 @@ pub(super) fn build_bytecode_module_from_source_files(
             .map(|source| source.path.as_deref().unwrap_or_default())
             .collect::<Vec<_>>();
         crate::bytecode::BytecodeModule::from_runtime_with_sources_and_paths(
-            &runtime,
+            runtime,
             &source_refs,
             &paths,
         )
         .map_err(|err| CompileError::new(err.to_string()))
     } else {
-        crate::bytecode::BytecodeModule::from_runtime_with_sources(&runtime, &source_refs)
+        crate::bytecode::BytecodeModule::from_runtime_with_sources(runtime, &source_refs)
             .map_err(|err| CompileError::new(err.to_string()))
     }
 }

@@ -12,14 +12,38 @@ fn loads_runtime() {
 }
 
 #[test]
-fn runtime_execution_backend_defaults_and_validation() {
+fn runtime_execution_backend_defaults_and_lazy_vm_materialization() {
     let mut runtime = Runtime::new();
-    assert_eq!(runtime.execution_backend(), ExecutionBackend::Interpreter);
-
-    let err = runtime
+    assert_eq!(runtime.execution_backend(), ExecutionBackend::BytecodeVm);
+    runtime
         .set_execution_backend(ExecutionBackend::BytecodeVm)
-        .expect_err("vm backend should require loaded bytecode module");
-    assert!(err.to_string().contains("runtime.execution_backend='vm'"));
+        .expect("vm backend selection should not require preloaded bytecode");
+
+    let source = r#"
+        PROGRAM Main
+        VAR
+            count : DINT := DINT#0;
+        END_VAR
+        count := count + DINT#1;
+        END_PROGRAM
+    "#;
+    let mut runtime = CompileSession::from_source(source)
+        .build_runtime()
+        .expect("build runtime");
+    runtime
+        .set_execution_backend(ExecutionBackend::BytecodeVm)
+        .expect("select vm backend");
+    runtime
+        .execute_cycle()
+        .expect("vm backend should lazy materialize bytecode module");
+    let main_id = match runtime.storage().get_global("Main") {
+        Some(Value::Instance(id)) => *id,
+        other => panic!("expected Main instance global, got {other:?}"),
+    };
+    assert_eq!(
+        runtime.storage().get_instance_var(main_id, "count"),
+        Some(&Value::DInt(1))
+    );
 }
 
 #[test]
@@ -50,6 +74,7 @@ fn runtime_metrics_snapshot_tracks_vm_backend_selection() {
     assert_eq!(snapshot.execution_backend, ExecutionBackend::BytecodeVm);
 }
 
+#[cfg(feature = "legacy-interpreter")]
 #[test]
 fn runtime_rolls_back_to_interpreter_with_loaded_bytecode() {
     let source = r#"

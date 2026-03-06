@@ -96,7 +96,7 @@ END_PROGRAM
         result
             .get("execution_backend")
             .and_then(serde_json::Value::as_str),
-        Some("interpreter")
+        Some("vm")
     );
     assert_eq!(
         result
@@ -109,7 +109,7 @@ END_PROGRAM
             .get("metrics")
             .and_then(|metrics| metrics.get("execution_backend"))
             .and_then(serde_json::Value::as_str),
-        Some("interpreter")
+        Some("vm")
     );
 }
 
@@ -303,7 +303,7 @@ END_PROGRAM
         result
             .get("execution_backend")
             .and_then(serde_json::Value::as_str),
-        Some("interpreter")
+        Some("vm")
     );
 }
 

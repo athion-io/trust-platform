@@ -173,37 +173,29 @@ mod tests {
     }
 
     #[test]
-    fn parse_run_execution_backend_interpreter_flag() {
-        let cli = Cli::parse_from([
+    fn parse_run_execution_backend_rejects_interpreter_flag() {
+        let err = Cli::try_parse_from([
             "trust-runtime",
             "run",
             "--project",
             "project",
             "--execution-backend",
             "interpreter",
-        ]);
-        match cli.command.expect("command") {
-            Command::Run {
-                execution_backend, ..
-            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Interpreter)),
-            other => panic!("expected run command, got {other:?}"),
-        }
+        ])
+        .expect_err("interpreter backend should be rejected by CLI");
+        assert!(err.to_string().contains("invalid value 'interpreter'"));
     }
 
     #[test]
-    fn parse_play_execution_backend_flag() {
-        let cli = Cli::parse_from([
+    fn parse_play_execution_backend_rejects_interpreter_flag() {
+        let err = Cli::try_parse_from([
             "trust-runtime",
             "play",
             "--execution-backend",
             "interpreter",
-        ]);
-        match cli.command.expect("command") {
-            Command::Play {
-                execution_backend, ..
-            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Interpreter)),
-            other => panic!("expected play command, got {other:?}"),
-        }
+        ])
+        .expect_err("interpreter backend should be rejected by CLI");
+        assert!(err.to_string().contains("invalid value 'interpreter'"));
     }
 
     #[test]

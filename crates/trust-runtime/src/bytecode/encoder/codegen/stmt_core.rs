@@ -43,6 +43,9 @@ impl<'a> BytecodeEncoder<'a> {
             crate::eval::stmt::Stmt::Assign { target, value, .. } => {
                 self.emit_assign(ctx, target, value, code)?
             }
+            crate::eval::stmt::Stmt::AssignAttempt { target, value, .. } => {
+                self.emit_assign(ctx, target, value, code)?
+            }
             crate::eval::stmt::Stmt::Expr { expr, .. } => {
                 if !self.emit_expr(ctx, expr, code)? {
                     false

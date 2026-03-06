@@ -8,6 +8,10 @@ impl<'a> BytecodeEncoder<'a> {
         let start_len = code.len();
         let result = match expr {
             crate::eval::expr::Expr::Literal(value) => {
+                if matches!(value, Value::Null) {
+                    code.push(0x25); // LOAD_NULL
+                    return Ok(true);
+                }
                 let const_idx = match self.const_index_for(value) {
                     Ok(idx) => idx,
                     Err(_) => {
@@ -52,6 +56,11 @@ impl<'a> BytecodeEncoder<'a> {
             }
             crate::eval::expr::Expr::Field { target, field } => {
                 if let crate::eval::expr::Expr::Name(base) = target.as_ref() {
+                    if let Some(access) = crate::value::parse_partial_access(field.as_str()) {
+                        if self.emit_partial_read_for_name(ctx, base, access, code)? {
+                            return Ok(true);
+                        }
+                    }
                     if self.emit_dynamic_load_field(ctx, base, field, code)? {
                         return Ok(true);
                     }
@@ -95,22 +104,31 @@ impl<'a> BytecodeEncoder<'a> {
                         return Ok(true);
                     }
                     code.truncate(start_len);
-                    let reference = match self.resolve_lvalue_ref(
+                    if let Some(reference) = self.resolve_lvalue_ref(
                         ctx,
                         &crate::eval::expr::LValue::Index {
                             name: base.clone(),
                             indices: indices.clone(),
                         },
                     )? {
-                        Some(reference) => reference,
-                        None => {
+                        let ref_idx = self.ref_index_for(&reference)?;
+                        code.push(0x20);
+                        code.extend_from_slice(&ref_idx.to_le_bytes());
+                        return Ok(true);
+                    }
+                    code.truncate(start_len);
+                    if !self.emit_ref_for_name(ctx, base, code)? {
+                        code.truncate(start_len);
+                        return Ok(false);
+                    }
+                    for index in indices {
+                        if !self.emit_expr(ctx, index, code)? {
                             code.truncate(start_len);
                             return Ok(false);
                         }
-                    };
-                    let ref_idx = self.ref_index_for(&reference)?;
-                    code.push(0x20);
-                    code.extend_from_slice(&ref_idx.to_le_bytes());
+                        code.push(0x31);
+                    }
+                    code.push(0x32);
                     Ok(true)
                 } else if !self.emit_ref_expr(ctx, target, code)? {
                     Ok(false)
@@ -265,6 +283,7 @@ impl<'a> BytecodeEncoder<'a> {
                 if self.runtime.functions().contains_key(&key) {
                     (NativeTargetKind::Function, name.clone(), false)
                 } else if self.runtime.stdlib().get(name.as_str()).is_some()
+                    || crate::stdlib::time::is_split_name(key.as_str())
                     || crate::stdlib::conversions::is_conversion_name(key.as_str())
                 {
                     (NativeTargetKind::Stdlib, name.clone(), false)

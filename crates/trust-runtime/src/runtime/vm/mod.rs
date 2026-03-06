@@ -20,6 +20,7 @@ mod dispatch_refs;
 mod dispatch_sizeof;
 mod errors;
 mod frames;
+mod register_ir;
 mod stack;
 
 // VM module ownership notes (Phase B):
@@ -32,8 +33,14 @@ mod stack;
 // - frames/call: call-stack and frame lifecycle.
 // - errors: VM trap taxonomy and stable RuntimeError mapping.
 // - debug_map: symbol/source lookup tables for external name/debug APIs.
+// - register_ir: Phase A scaffold for stack-bytecode -> register-IR lowering + verifier.
 
+use self::errors::VmTrap;
 use super::core::Runtime;
+
+pub(super) use register_ir::{
+    RegisterLoweringCacheState, RegisterProfileState, RegisterTier1SpecializedExecutorState,
+};
 
 pub(super) const DEFAULT_INSTRUCTION_BUDGET: usize = 1_000_000;
 
@@ -60,11 +67,32 @@ pub(super) struct VmModule {
     pub(super) consts: Vec<Value>,
     pub(super) pou_by_id: HashMap<u32, VmPouEntry>,
     pub(super) program_ids: HashMap<SmolStr, u32>,
+    pub(super) function_ids: HashMap<SmolStr, u32>,
     pub(super) function_block_ids: HashMap<SmolStr, u32>,
+    pub(super) class_ids: HashMap<SmolStr, u32>,
+    native_symbol_specs: Vec<VmNativeSymbolSpec>,
+    pou_params: HashMap<u32, Vec<VmParamMeta>>,
+    pou_has_return_slot: HashSet<u32>,
+    method_table_by_owner: HashMap<u32, HashMap<SmolStr, u32>>,
     #[allow(dead_code)]
     // Populated in Phase B, consumed by debug/event parity work in later phases.
     debug_map: debug_map::VmDebugMap,
     pub(super) instruction_budget: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct VmNativeArgSpec {
+    pub(super) name: Option<SmolStr>,
+    pub(super) is_target: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum VmNativeSymbolSpec {
+    Parsed {
+        target_name: SmolStr,
+        arg_specs: Vec<VmNativeArgSpec>,
+    },
+    ParseError(SmolStr),
 }
 
 impl VmModule {
@@ -96,6 +124,11 @@ impl VmModule {
 
         let refs = decode_ref_table(ref_table, strings)?;
         let consts = const_pool::decode_const_pool_entries(const_pool, types)?;
+        let native_symbol_specs = strings
+            .entries
+            .iter()
+            .map(call::preparse_native_symbol_spec)
+            .collect();
 
         let debug_map = debug_map::VmDebugMap::from_sections(
             strings,
@@ -115,8 +148,14 @@ impl VmModule {
 
         let mut pou_by_id = HashMap::new();
         let mut program_ids = HashMap::new();
+        let mut function_ids = HashMap::new();
         let mut function_block_ids = HashMap::new();
+        let mut class_ids = HashMap::new();
+        let mut pou_params = HashMap::new();
+        let mut pou_has_return_slot = HashSet::new();
+        let mut method_table_by_owner: HashMap<u32, HashMap<SmolStr, u32>> = HashMap::new();
 
+        let mut pou_name_by_id: HashMap<u32, SmolStr> = HashMap::new();
         for entry in &pou_index.entries {
             let name = strings
                 .entries
@@ -125,6 +164,13 @@ impl VmModule {
                 .ok_or_else(|| {
                     invalid_bytecode(format!("invalid POU name string index {}", entry.name_idx))
                 })?;
+            pou_name_by_id.insert(entry.id, name);
+        }
+
+        for entry in &pou_index.entries {
+            let name = pou_name_by_id.get(&entry.id).cloned().ok_or_else(|| {
+                invalid_bytecode(format!("missing decoded POU name for id {}", entry.id))
+            })?;
             let code_start = entry.code_offset as usize;
             let code_end = code_start + entry.code_length as usize;
             if code_end > bodies.len() {
@@ -144,11 +190,59 @@ impl VmModule {
                 infer_primary_instance_owner(&vm_entry, bodies, &refs);
             pou_by_id.insert(entry.id, vm_entry);
 
+            if entry.return_type_id.is_some() {
+                pou_has_return_slot.insert(entry.id);
+            }
+            let mut params = Vec::with_capacity(entry.params.len());
+            for param in &entry.params {
+                let param_name = strings
+                    .entries
+                    .get(param.name_idx as usize)
+                    .cloned()
+                    .ok_or_else(|| {
+                        invalid_bytecode(format!(
+                            "invalid param name string index {}",
+                            param.name_idx
+                        ))
+                    })?;
+                params.push(VmParamMeta {
+                    name: param_name,
+                    direction: param.direction,
+                    default_const_idx: param.default_const_idx,
+                });
+            }
+            pou_params.insert(entry.id, params);
+
             let key = SmolStr::new(name.to_ascii_uppercase());
             if matches!(entry.kind, PouKind::Program) {
                 program_ids.insert(key, entry.id);
             } else if matches!(entry.kind, PouKind::FunctionBlock) {
                 function_block_ids.insert(key, entry.id);
+            } else if matches!(entry.kind, PouKind::Function) {
+                function_ids.insert(key, entry.id);
+            } else if matches!(entry.kind, PouKind::Class) {
+                class_ids.insert(key, entry.id);
+            }
+
+            if let Some(class_meta) = &entry.class_meta {
+                let owner = entry.id;
+                let table = method_table_by_owner.entry(owner).or_default();
+                for method in &class_meta.methods {
+                    let method_name = strings
+                        .entries
+                        .get(method.name_idx as usize)
+                        .cloned()
+                        .ok_or_else(|| {
+                            invalid_bytecode(format!(
+                                "invalid method name string index {}",
+                                method.name_idx
+                            ))
+                        })?;
+                    table.insert(
+                        SmolStr::new(method_name.to_ascii_uppercase()),
+                        method.pou_id,
+                    );
+                }
             }
         }
 
@@ -160,7 +254,13 @@ impl VmModule {
             consts,
             pou_by_id,
             program_ids,
+            function_ids,
             function_block_ids,
+            class_ids,
+            native_symbol_specs,
+            pou_params,
+            pou_has_return_slot,
+            method_table_by_owner,
             debug_map,
             instruction_budget: DEFAULT_INSTRUCTION_BUDGET,
         })
@@ -168,6 +268,45 @@ impl VmModule {
 
     pub(super) fn pou(&self, id: u32) -> Option<&VmPouEntry> {
         self.pou_by_id.get(&id)
+    }
+
+    pub(super) fn pou_params(&self, id: u32) -> Option<&[VmParamMeta]> {
+        self.pou_params.get(&id).map(Vec::as_slice)
+    }
+
+    pub(super) fn pou_has_return_slot(&self, id: u32) -> bool {
+        self.pou_has_return_slot.contains(&id)
+    }
+
+    pub(super) fn resolve_method_pou_id(
+        &self,
+        owner_pou_id: u32,
+        method_name: &str,
+    ) -> Option<u32> {
+        let key = SmolStr::new(method_name.to_ascii_uppercase());
+        self.method_table_by_owner
+            .get(&owner_pou_id)
+            .and_then(|table| table.get(&key))
+            .copied()
+    }
+
+    fn native_symbol_spec(
+        &self,
+        symbol_idx: u32,
+    ) -> Result<(&SmolStr, &[VmNativeArgSpec]), VmTrap> {
+        let entry = self
+            .native_symbol_specs
+            .get(symbol_idx as usize)
+            .ok_or(VmTrap::InvalidNativeSymbolIndex(symbol_idx))?;
+        match entry {
+            VmNativeSymbolSpec::Parsed {
+                target_name,
+                arg_specs,
+            } => Ok((target_name, arg_specs.as_slice())),
+            VmNativeSymbolSpec::ParseError(message) => {
+                Err(VmTrap::InvalidNativeCall(message.clone()))
+            }
+        }
     }
 }
 
@@ -178,6 +317,13 @@ pub(super) struct VmPouEntry {
     pub(super) local_ref_start: u32,
     pub(super) local_ref_count: u32,
     pub(super) primary_instance_owner: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct VmParamMeta {
+    pub(super) name: SmolStr,
+    pub(super) direction: u8,
+    pub(super) default_const_idx: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

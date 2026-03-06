@@ -2,7 +2,9 @@ use trust_runtime::debug::RuntimeEvent;
 use trust_runtime::eval::expr::{Expr, LValue};
 use trust_runtime::eval::ops::BinaryOp;
 use trust_runtime::eval::stmt::Stmt;
+#[cfg(feature = "legacy-interpreter")]
 use trust_runtime::execution_backend::ExecutionBackend;
+#[cfg(feature = "legacy-interpreter")]
 use trust_runtime::harness::CompileSession;
 use trust_runtime::task::{ProgramDef, TaskConfig};
 use trust_runtime::value::{Duration, Value};
@@ -143,6 +145,7 @@ fn runtime_event_fault_emitted() {
     assert!(runtime.faulted());
 }
 
+#[cfg(feature = "legacy-interpreter")]
 fn event_kinds(events: &[RuntimeEvent]) -> Vec<&'static str> {
     events
         .iter()
@@ -157,6 +160,7 @@ fn event_kinds(events: &[RuntimeEvent]) -> Vec<&'static str> {
         .collect()
 }
 
+#[cfg(feature = "legacy-interpreter")]
 #[test]
 fn runtime_event_sequence_matches_between_interpreter_and_vm() {
     let source = r#"

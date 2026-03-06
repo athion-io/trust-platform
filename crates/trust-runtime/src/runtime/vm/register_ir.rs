@@ -1565,9 +1565,10 @@ fn execute_register_program(
             if let Some(location) =
                 register_statement_location(runtime, module, program.pou_id, block.start_pc)
             {
-                if let Some(debug) = runtime.debug.as_mut() {
+                if let Some(mut debug) = runtime.debug.clone() {
                     let call_depth =
                         depth_offset.saturating_add(frames.len().saturating_sub(1) as u32);
+                    debug.refresh_snapshot_from_storage(runtime.storage(), runtime.current_time);
                     debug.on_statement(Some(&location), call_depth);
                 }
             }

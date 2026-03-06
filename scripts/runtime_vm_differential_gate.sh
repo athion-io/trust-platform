@@ -38,7 +38,7 @@ case "${PROFILE}" in
       echo "[vm-differential-gate] quick subset: ${test_name}"
       run_ms="$(run_and_log \
         "bytecode_vm_differential_${test_name}" \
-        cargo test -p trust-runtime --test bytecode_vm_differential "${test_name}" -- --exact --test-threads="${TEST_THREADS}")"
+        cargo test -p trust-runtime --features legacy-interpreter --test bytecode_vm_differential "${test_name}" -- --exact --test-threads="${TEST_THREADS}")"
       duration_ms_total="$((duration_ms_total + run_ms))"
       echo "${test_name},${run_ms}" >> "${OUT_DIR}/timings.csv"
     done
@@ -47,7 +47,7 @@ case "${PROFILE}" in
     echo "[vm-differential-gate] full differential suite"
     run_ms="$(run_and_log \
       "bytecode_vm_differential_full" \
-      cargo test -p trust-runtime --test bytecode_vm_differential -- --test-threads="${TEST_THREADS}")"
+      cargo test -p trust-runtime --features legacy-interpreter --test bytecode_vm_differential -- --test-threads="${TEST_THREADS}")"
     duration_ms_total="$((duration_ms_total + run_ms))"
     echo "full_suite,${run_ms}" >> "${OUT_DIR}/timings.csv"
     ;;

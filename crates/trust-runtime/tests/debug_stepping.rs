@@ -5,8 +5,10 @@ use std::thread;
 use std::time::Duration;
 
 use trust_runtime::debug::{DebugBreakpoint, DebugStopReason, SourceLocation};
+#[cfg(feature = "legacy-interpreter")]
 use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::{CompileSession, SourceFile};
+#[cfg(feature = "legacy-interpreter")]
 use trust_runtime::value::Value;
 
 fn line_index(source: &str, needle: &str) -> u32 {
@@ -28,6 +30,7 @@ fn resolve_location(
         .unwrap_or_else(|| panic!("failed to resolve breakpoint for {needle}"))
 }
 
+#[cfg(feature = "legacy-interpreter")]
 fn runtime_for_backend(source: &str, backend: ExecutionBackend) -> trust_runtime::Runtime {
     let session = CompileSession::from_sources(vec![SourceFile::with_path("main.st", source)]);
     let mut runtime = session.build_runtime().expect("build runtime");
@@ -43,6 +46,7 @@ fn runtime_for_backend(source: &str, backend: ExecutionBackend) -> trust_runtime
     runtime
 }
 
+#[cfg(feature = "legacy-interpreter")]
 fn breakpoint_then_step_over_stop(
     mut runtime: trust_runtime::Runtime,
     source: &str,
@@ -86,6 +90,7 @@ fn breakpoint_then_step_over_stop(
     (break_location, step_location)
 }
 
+#[cfg(feature = "legacy-interpreter")]
 #[test]
 fn step_in_enters_callee_on_first_statement() {
     let main = r#"PROGRAM Main
@@ -110,6 +115,9 @@ END_FUNCTION
         SourceFile::with_path("lib.st", lib),
     ]);
     let mut runtime = session.build_runtime().unwrap();
+    runtime
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("select interpreter backend");
     let call_location = resolve_location(&runtime, main, 0, "Count := AddTwo");
     let expected_callee = resolve_location(&runtime, lib, 1, "AddTwo := Value + 2");
 
@@ -195,6 +203,48 @@ END_FUNCTION
 }
 
 #[test]
+fn vm_breakpoint_populates_debug_snapshot_for_stack_queries() {
+    let source = r#"PROGRAM Main
+VAR
+    Count : INT := 0;
+END_VAR
+    Count := Count + 1;
+END_PROGRAM
+"#;
+
+    let session = CompileSession::from_sources(vec![SourceFile::new(source)]);
+    let mut runtime = session.build_runtime().unwrap();
+    let breakpoint_location = resolve_location(&runtime, source, 0, "Count := Count + 1");
+
+    let control = runtime.enable_debug();
+    let (stop_tx, stop_rx) = channel();
+    control.set_stop_sender(stop_tx);
+    control.set_breakpoints_for_file(0, vec![DebugBreakpoint::new(breakpoint_location)]);
+
+    let runtime = Arc::new(Mutex::new(runtime));
+    let runtime_thread = runtime.clone();
+    let handle = thread::spawn(move || {
+        let mut runtime = runtime_thread.lock().expect("runtime lock poisoned");
+        runtime.execute_cycle().unwrap();
+    });
+
+    let stop = stop_rx.recv_timeout(Duration::from_millis(500)).unwrap();
+    assert_eq!(stop.reason, DebugStopReason::Breakpoint);
+
+    let snapshot = control
+        .snapshot()
+        .expect("expected paused snapshot at VM breakpoint");
+    assert!(
+        snapshot.storage.get_global("Main").is_some(),
+        "expected snapshot to include runtime storage while paused"
+    );
+
+    control.continue_run();
+    handle.join().unwrap();
+}
+
+#[cfg(feature = "legacy-interpreter")]
+#[test]
 fn step_out_returns_to_caller_after_function_body() {
     let main = r#"PROGRAM Main
 VAR
@@ -222,6 +272,9 @@ END_FUNCTION
         SourceFile::with_path("lib.st", lib),
     ]);
     let mut runtime = session.build_runtime().unwrap();
+    runtime
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("select interpreter backend");
     let breakpoint_location = resolve_location(&runtime, lib, 1, "Temp := Value + 1");
     let expected_next = resolve_location(&runtime, main, 0, "Count := Count + 1");
 
@@ -484,6 +537,7 @@ END_PROGRAM
     handle.join().unwrap();
 }
 
+#[cfg(feature = "legacy-interpreter")]
 #[test]
 fn vm_breakpoint_and_step_over_match_interpreter_locations() {
     let source = r#"PROGRAM Main
@@ -515,6 +569,7 @@ END_PROGRAM
     assert_eq!(interp_step, vm_step);
 }
 
+#[cfg(feature = "legacy-interpreter")]
 #[test]
 fn vm_debug_global_write_flow_matches_interpreter() {
     let source = r#"

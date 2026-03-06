@@ -6,6 +6,9 @@ impl<'a> BytecodeEncoder<'a> {
         value: &crate::eval::expr::Expr,
         code: &mut Vec<u8>,
     ) -> Result<bool, BytecodeError> {
+        if let Some(emitted) = self.emit_partial_assign(ctx, target, value, code)? {
+            return Ok(emitted);
+        }
         if let Some(emitted) = self.emit_dynamic_assign(ctx, target, value, code)? {
             return Ok(emitted);
         }
@@ -27,6 +30,35 @@ impl<'a> BytecodeEncoder<'a> {
         code.push(0x13); // SWAP
         code.push(0x33); // STORE
         Ok(true)
+    }
+
+    fn emit_partial_assign(
+        &mut self,
+        ctx: &CodegenContext,
+        target: &crate::eval::expr::LValue,
+        value: &crate::eval::expr::Expr,
+        code: &mut Vec<u8>,
+    ) -> Result<Option<bool>, BytecodeError> {
+        let crate::eval::expr::LValue::Field { name, field } = target else {
+            return Ok(None);
+        };
+        let Some(partial) = crate::value::parse_partial_access(field.as_str()) else {
+            return Ok(None);
+        };
+
+        let start_len = code.len();
+        let Some(reference) = self.resolve_name_ref(ctx, name)? else {
+            code.truncate(start_len);
+            return Ok(Some(false));
+        };
+        self.emit_load_ref(&reference, code)?;
+        if !self.emit_expr(ctx, value, code)? {
+            code.truncate(start_len);
+            return Ok(Some(false));
+        }
+        self.emit_partial_write(partial, code);
+        self.emit_store_ref(&reference, code)?;
+        Ok(Some(true))
     }
 
     fn emit_dynamic_assign(
@@ -202,6 +234,48 @@ impl<'a> BytecodeEncoder<'a> {
         code.extend_from_slice(&field_idx.to_le_bytes());
         code.push(0x32);
         Ok(true)
+    }
+
+    fn emit_partial_read_for_name(
+        &mut self,
+        ctx: &CodegenContext,
+        name: &SmolStr,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        let Some(reference) = self.resolve_name_ref(ctx, name)? else {
+            return Ok(false);
+        };
+        self.emit_load_ref(&reference, code)?;
+        self.emit_partial_read(access, code);
+        Ok(true)
+    }
+
+    fn emit_partial_read(
+        &self,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) {
+        code.push(0x62); // PARTIAL_READ
+        code.extend_from_slice(&Self::partial_access_operand(access).to_le_bytes());
+    }
+
+    fn emit_partial_write(
+        &self,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) {
+        code.push(0x63); // PARTIAL_WRITE
+        code.extend_from_slice(&Self::partial_access_operand(access).to_le_bytes());
+    }
+
+    fn partial_access_operand(access: crate::value::PartialAccess) -> u32 {
+        match access {
+            crate::value::PartialAccess::Bit(index) => u32::from(index),
+            crate::value::PartialAccess::Byte(index) => 0x0100 | u32::from(index),
+            crate::value::PartialAccess::Word(index) => 0x0200 | u32::from(index),
+            crate::value::PartialAccess::DWord(index) => 0x0300 | u32::from(index),
+        }
     }
 
     fn emit_dynamic_load_index(

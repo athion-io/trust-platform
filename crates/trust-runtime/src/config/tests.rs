@@ -10,7 +10,7 @@ name = "main"
 cycle_interval_ms = 100
 
 [runtime]
-execution_backend = "interpreter"
+execution_backend = "vm"
 
 [runtime.control]
 endpoint = "unix:///tmp/trust-runtime.sock"
@@ -87,29 +87,39 @@ fn runtime_schema_rejects_invalid_ranges() {
 
 #[test]
 fn runtime_schema_accepts_vm_execution_backend() {
-    let text = runtime_toml().replace(
-        "execution_backend = \"interpreter\"",
-        "execution_backend = \"vm\"",
-    );
+    let text = runtime_toml();
     validate_runtime_toml_text(&text).expect("vm backend setting should validate");
 }
 
 #[test]
 fn runtime_schema_defaults_execution_backend_when_omitted() {
-    let text = runtime_toml().replace("[runtime]\nexecution_backend = \"interpreter\"\n\n", "");
+    let text = runtime_toml().replace("[runtime]\nexecution_backend = \"vm\"\n\n", "");
     validate_runtime_toml_text(&text).expect("execution backend default should validate");
 }
 
 #[test]
 fn runtime_schema_rejects_invalid_execution_backend() {
     let text = runtime_toml().replace(
-        "execution_backend = \"interpreter\"",
+        "execution_backend = \"vm\"",
         "execution_backend = \"bytecode\"",
     );
     let err = validate_runtime_toml_text(&text).expect_err("execution backend enum should fail");
     assert!(err
         .to_string()
         .contains("invalid runtime.execution_backend 'bytecode'"));
+}
+
+#[test]
+fn runtime_schema_rejects_interpreter_execution_backend_for_production() {
+    let text = runtime_toml().replace(
+        "execution_backend = \"vm\"",
+        "execution_backend = \"interpreter\"",
+    );
+    let err =
+        validate_runtime_toml_text(&text).expect_err("interpreter backend should be rejected");
+    assert!(err
+        .to_string()
+        .contains("runtime.execution_backend='interpreter' is no longer supported"));
 }
 
 #[test]
@@ -382,14 +392,7 @@ fn runtime_config_load_records_execution_backend_source_from_config() {
     ));
     std::fs::create_dir_all(&root).expect("create temp dir");
     let runtime_path = root.join("runtime.toml");
-    std::fs::write(
-        &runtime_path,
-        runtime_toml().replace(
-            "execution_backend = \"interpreter\"",
-            "execution_backend = \"vm\"",
-        ),
-    )
-    .expect("write runtime config");
+    std::fs::write(&runtime_path, runtime_toml()).expect("write runtime config");
 
     let runtime = RuntimeConfig::load(&runtime_path).expect("load runtime config");
     assert_eq!(
@@ -415,14 +418,14 @@ fn runtime_config_load_defaults_execution_backend_source_when_omitted() {
     let runtime_path = root.join("runtime.toml");
     std::fs::write(
         &runtime_path,
-        runtime_toml().replace("[runtime]\nexecution_backend = \"interpreter\"\n\n", ""),
+        runtime_toml().replace("[runtime]\nexecution_backend = \"vm\"\n\n", ""),
     )
     .expect("write runtime config");
 
     let runtime = RuntimeConfig::load(&runtime_path).expect("load runtime config");
     assert_eq!(
         runtime.execution_backend,
-        crate::execution_backend::ExecutionBackend::Interpreter
+        crate::execution_backend::ExecutionBackend::BytecodeVm
     );
     assert_eq!(
         runtime.execution_backend_source,
