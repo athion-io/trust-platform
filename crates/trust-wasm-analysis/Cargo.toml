@@ -21,3 +21,4 @@ serde.workspace = true
 serde_json.workspace = true
 text-size.workspace = true
 wasm-bindgen = { workspace = true, optional = true }
+trust-expression-eval.workspace = true

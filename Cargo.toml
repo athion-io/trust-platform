@@ -8,6 +8,7 @@ members = [
     "crates/trust-lsp",
     "crates/trust-runtime",
     "crates/trust-wasm-analysis",
+    "crates/trust-expression-eval",
 ]
 
 [workspace.package]
@@ -84,6 +85,7 @@ trust-hir = { path = "crates/trust-hir" }
 trust-ide = { path = "crates/trust-ide" }
 trust-runtime = { path = "crates/trust-runtime" }
 trust-wasm-analysis = { path = "crates/trust-wasm-analysis" }
+trust-expression-eval = { path = "crates/trust-expression-eval"}
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
