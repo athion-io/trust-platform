@@ -1,0 +1,14 @@
+[package]
+name = "trust-expression-eval"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+trust-syntax.workspace = true
+trust-hir.workspace = true
+rowan.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
