@@ -51,6 +51,7 @@ const WEBVIEW_HTML_TEMPLATE = `<!DOCTYPE html>
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SFC Editor</title>
+    <link rel="stylesheet" href="{{webviewStyle}}" />
     <style>
       * {
         box-sizing: border-box;
@@ -208,7 +209,13 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
             return;
 
           case "generateST":
-            await this.generateST(document);
+            await this.generateST(
+              document,
+              webviewPanel,
+              "content" in message && typeof message.content === "string"
+                ? message.content
+                : undefined
+            );
             return;
 
           case "debugPause":
@@ -237,6 +244,8 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
       changeDocumentSubscription.dispose();
       messageSubscription.dispose();
       void this.stopExecution(docId, false);
+      this.runtimeController.clear(docId);
+      this.runtimeIoState.delete(docId);
     });
 
     // Initial update
@@ -250,12 +259,16 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.file(path.join(this.context.extensionPath, "media", "sfcWebview.js"))
     );
+    const styleUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, "media", "sfcWebview.css"))
+    );
 
     const cspSource = webview.cspSource;
 
     return WEBVIEW_HTML_TEMPLATE
       .replace(/{{cspSource}}/g, cspSource)
-      .replace("{{webviewScript}}", scriptUri.toString());
+      .replace("{{webviewScript}}", scriptUri.toString())
+      .replace("{{webviewStyle}}", styleUri.toString());
   }
 
   /**
@@ -315,9 +328,14 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
   /**
    * Generate Structured Text from SFC
    */
-  private async generateST(document: vscode.TextDocument): Promise<void> {
+  private async generateST(
+    document: vscode.TextDocument,
+    webviewPanel?: vscode.WebviewPanel,
+    contentOverride?: string
+  ): Promise<void> {
     try {
-      const workspace: SfcWorkspace = JSON.parse(document.getText());
+      const sourceText = contentOverride ?? document.getText();
+      const workspace: SfcWorkspace = JSON.parse(sourceText);
       const engine = new SfcEngine(workspace);
       const stCode = engine.generateStructuredText();
 
@@ -334,11 +352,25 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
       const stDoc = await vscode.workspace.openTextDocument(stUri);
       await vscode.window.showTextDocument(stDoc, vscode.ViewColumn.Beside);
 
+      if (webviewPanel) {
+        await webviewPanel.webview.postMessage({
+          type: "codeGenerated",
+          code: stCode,
+          errors: [],
+        });
+      }
+
       vscode.window.showInformationMessage(
         "Structured Text code generated successfully!"
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (webviewPanel) {
+        await webviewPanel.webview.postMessage({
+          type: "codeGenerated",
+          errors: [message],
+        });
+      }
       vscode.window.showErrorMessage(`Code generation failed: ${message}`);
     }
   }
@@ -352,26 +384,47 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
     message: RuntimeWebviewToExtensionMessage,
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
-    console.log(`[SFC] handleRuntimeMessage: ${message.type}`);
-    
-    switch (message.type) {
-      case "runtime.setMode":
-        console.log(`[SFC] Setting mode to: ${message.mode}`);
-        // message.mode is already RuntimeUiMode ("local" | "external")
-        this.runtimeController.setMode(docId, message.mode);
-        persistRuntimeUiMode(document.uri, message.mode);
-        this.postRuntimeState(docId, document.uri, webviewPanel);
-        break;
+    if (message.type === "runtime.setMode") {
+      this.runtimeController.setMode(docId, message.mode);
+      await persistRuntimeUiMode(document.uri, message.mode);
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
 
-      case "runtime.start":
-        console.log(`[SFC] Starting execution...`);
-        await this.startExecution(docId, document, webviewPanel);
-        break;
+    if (message.type === "runtime.openPanel") {
+      await this.runtimeController.openRuntimePanel();
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
 
-      case "runtime.stop":
-        console.log(`[SFC] Stopping execution...`);
-        await this.stopExecution(docId);
-        break;
+    if (message.type === "runtime.openSettings") {
+      await this.runtimeController.openRuntimeSettings();
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
+
+    const adapter = {
+      startLocal: async () =>
+        this.startExecution(docId, document, webviewPanel, "simulation"),
+      startExternal: async () =>
+        this.startExecution(docId, document, webviewPanel, "hardware"),
+      stop: async () => this.stopExecution(docId, false),
+    };
+
+    try {
+      if (message.type === "runtime.start") {
+        await this.runtimeController.start(docId, adapter);
+      }
+      if (message.type === "runtime.stop") {
+        await this.runtimeController.stop(docId, adapter);
+      }
+    } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(details);
+      webviewPanel.webview.postMessage(runtimeMessage.error(details));
+    } finally {
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      this.postRuntimePanelIoState(docId, document, webviewPanel);
     }
   }
 
@@ -384,39 +437,52 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
     message: RuntimePanelWebviewMessage,
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
-    const state = this.activeExecutions.get(docId);
-    const runtimeState = this.runtimeController.ensureState(docId);
-    const isLocal = runtimeState.mode === "local";
-
     switch (message.type) {
+      case "webviewReady":
+        this.runtimeController.ensureState(docId);
+        this.postRuntimeState(docId, document.uri, webviewPanel);
+        this.postRuntimePanelSettings(document.uri, webviewPanel);
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
+        return;
+      case "requestSettings":
+        this.postRuntimePanelSettings(document.uri, webviewPanel);
+        return;
       case "runtimeStart":
-        console.log(`[SFC] Runtime start/stop toggle (from panel)...`);
-        // Toggle between start and stop based on current execution state
-        if (state?.engine) {
-          await this.stopExecution(docId);
-        } else {
-          await this.startExecution(docId, document, webviewPanel);
+        {
+          const current = this.runtimeController.ensureState(docId);
+          await this.handleRuntimeMessage(
+            docId,
+            document,
+            current.isExecuting ? runtimeMessage.stop() : runtimeMessage.start(),
+            webviewPanel
+          );
         }
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
         break;
 
       case "runtimeSetMode":
-        console.log(`[SFC] Setting mode (from panel): ${message.mode}`);
-        // Convert from panel mode ("simulate"/"online") to UI mode ("local"/"external")
-        const uiMode = runtimePanelModeToUi(message.mode);
-        this.runtimeController.setMode(docId, uiMode);
-        persistRuntimeUiMode(document.uri, uiMode);
-        this.postRuntimeState(docId, document.uri, webviewPanel);
+        await this.handleRuntimeMessage(
+          docId,
+          document,
+          runtimeMessage.setMode(runtimePanelModeToUi(message.mode)),
+          webviewPanel
+        );
         break;
 
       case "saveSettings":
         if (message.payload) {
-          applyRuntimePanelSettings(document.uri, message.payload);
+          await applyRuntimePanelSettings(document.uri, message.payload);
         }
         this.postRuntimePanelSettings(document.uri, webviewPanel);
+        this.postRuntimeState(docId, document.uri, webviewPanel);
+        webviewPanel.webview.postMessage({
+          type: "status",
+          payload: "Runtime settings saved.",
+        });
         break;
 
       case "writeInput":
-        if (!state) {
+        if (!this.activeExecutions.get(docId)) {
           return;
         }
         // TODO: Implement write input
@@ -424,7 +490,7 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
         break;
 
       case "forceInput":
-        if (!state) {
+        if (!this.activeExecutions.get(docId)) {
           return;
         }
         // TODO: Implement force input
@@ -432,7 +498,7 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
         break;
 
       case "releaseInput":
-        if (!state) {
+        if (!this.activeExecutions.get(docId)) {
           return;
         }
         // TODO: Implement release input
@@ -447,7 +513,8 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
   private async startExecution(
     docId: string,
     document: vscode.TextDocument,
-    webviewPanel: vscode.WebviewPanel
+    webviewPanel: vscode.WebviewPanel,
+    modeOverride?: ExecutionMode
   ): Promise<void> {
     console.log("[SFC] Starting execution for document:", docId);
     
@@ -458,7 +525,8 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
     const runtimeState = this.runtimeController.ensureState(docId);
     const mode = runtimeState.mode;
     // Mode is "local" or "external" (RuntimeUiMode)
-    const executionMode: ExecutionMode = mode === "external" ? "hardware" : "simulation";
+    const executionMode: ExecutionMode =
+      modeOverride ?? (mode === "external" ? "hardware" : "simulation");
 
     console.log(`[SFC] Execution mode: ${mode} → ${executionMode}`);
 
@@ -468,7 +536,6 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
       await this.startHardware(docId, workspace, document, webviewPanel);
     }
 
-    this.postRuntimeState(docId, document.uri, webviewPanel);
   }
 
   /**
@@ -516,7 +583,7 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
       this.postRuntimePanelIoState(docId, undefined, webviewPanel);
     }, 100);
 
-    vscode.window.showInformationMessage("🖥️ SFC simulation started");
+    vscode.window.showInformationMessage("SFC simulation started");
   }
 
   /**
@@ -574,7 +641,7 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
       this.postRuntimePanelIoState(docId, document, webviewPanel);
     }, 100);
 
-    vscode.window.showInformationMessage("🔧 SFC hardware execution started");
+    vscode.window.showInformationMessage("SFC hardware execution started");
   }
 
   /**
@@ -594,7 +661,7 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
     this.activeExecutions.delete(docId);
 
     if (notify) {
-      vscode.window.showInformationMessage("⏹️ SFC execution stopped");
+      vscode.window.showInformationMessage("SFC execution stopped");
     }
   }
 
@@ -690,9 +757,11 @@ export class SfcEditorProvider implements vscode.CustomTextEditorProvider {
   ): void {
     const runtimeState = this.runtimeController.ensureState(docId);
 
-    webviewPanel.webview.postMessage(
-      runtimeMessage.state(runtimeState)
-    );
+    webviewPanel.webview.postMessage(runtimeMessage.state(runtimeState));
+    webviewPanel.webview.postMessage({
+      type: "runtimeStatus",
+      payload: runtimePanelStatusFromState(uri, runtimeState),
+    });
   }
 
   /**

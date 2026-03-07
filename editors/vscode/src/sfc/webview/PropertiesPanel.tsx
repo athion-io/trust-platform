@@ -1,21 +1,26 @@
 import React, { useState } from "react";
 import type {
+  ParallelNodeData,
+  SfcNode,
+  SfcParallelNode,
   SfcStepNode,
   SfcTransitionEdge,
   SfcAction,
   ActionQualifier,
   SfcVariable,
+  TransitionData,
 } from "./types";
 
 interface PropertiesPanelProps {
-  selectedNode: SfcStepNode | null;
+  selectedNode: SfcNode | null;
   selectedEdge: SfcTransitionEdge | null;
   variables: SfcVariable[] | undefined;
-  onUpdateNode: (nodeId: string, updates: Partial<SfcStepNode["data"]>) => void;
-  onUpdateEdge: (
-    edgeId: string,
-    updates: Partial<SfcTransitionEdge["data"]>
+  onUpdateStepNode: (nodeId: string, updates: Partial<SfcStepNode["data"]>) => void;
+  onUpdateParallelNode: (
+    nodeId: string,
+    updates: Partial<ParallelNodeData>
   ) => void;
+  onUpdateEdge: (edgeId: string, updates: Partial<TransitionData>) => void;
   onAddAction: (stepId: string, action: SfcAction) => void;
   onUpdateAction: (
     stepId: string,
@@ -25,6 +30,16 @@ interface PropertiesPanelProps {
   onDeleteAction: (stepId: string, actionId: string) => void;
   onUpdateVariables: (variables: SfcVariable[]) => void;
   onClose: () => void;
+}
+
+const MIN_PARALLEL_BRANCHES = 2;
+
+function isSfcStepNode(node: SfcNode): node is SfcStepNode {
+  return node.type === "step";
+}
+
+function isSfcParallelNode(node: SfcNode): node is SfcParallelNode {
+  return node.type === "parallelSplit" || node.type === "parallelJoin";
 }
 
 const ACTION_QUALIFIERS: ActionQualifier[] = [
@@ -50,7 +65,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   selectedNode,
   selectedEdge,
   variables,
-  onUpdateNode,
+  onUpdateStepNode,
+  onUpdateParallelNode,
   onUpdateEdge,
   onAddAction,
   onUpdateAction,
@@ -61,17 +77,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [newActionName, setNewActionName] = useState("");
   const [newActionQualifier, setNewActionQualifier] =
     useState<ActionQualifier>("N");
+  const selectedStepNode =
+    selectedNode && isSfcStepNode(selectedNode) ? selectedNode : null;
+  const selectedParallelNode =
+    selectedNode && isSfcParallelNode(selectedNode) ? selectedNode : null;
 
   const panelStyle: React.CSSProperties = {
-    width: "320px",
-    height: "100vh",
+    width: "100%",
     backgroundColor: "var(--vscode-sideBar-background)",
-    borderLeft: "1px solid var(--vscode-panel-border)",
+    borderTop: "1px solid var(--vscode-panel-border)",
     overflowY: "auto",
-    padding: "16px",
+    padding: "12px",
     fontFamily: "var(--vscode-font-family)",
     fontSize: "13px",
     color: "var(--vscode-editor-foreground)",
+    boxSizing: "border-box",
   };
 
   const inputStyle: React.CSSProperties = {
@@ -97,14 +117,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   };
 
   const handleAddAction = () => {
-    if (selectedNode && newActionName.trim()) {
+    if (selectedStepNode && newActionName.trim()) {
       const action: SfcAction = {
         id: `action_${Date.now()}`,
         name: newActionName.trim(),
         qualifier: newActionQualifier,
         body: "",
       };
-      onAddAction(selectedNode.id, action);
+      onAddAction(selectedStepNode.id, action);
       setNewActionName("");
     }
   };
@@ -134,10 +154,10 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         </button>
       </div>
 
-      {selectedNode && (
+      {selectedStepNode && (
         <div>
           <h4 style={{ marginTop: 0, marginBottom: "12px" }}>
-            Step: {selectedNode.data.label}
+            Step: {selectedStepNode.data.label}
           </h4>
 
           <div style={{ marginBottom: "16px" }}>
@@ -147,9 +167,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             <input
               type="text"
               style={inputStyle}
-              value={selectedNode.data.label}
+              value={selectedStepNode.data.label}
               onChange={(e) =>
-                onUpdateNode(selectedNode.id, { label: e.target.value })
+                onUpdateStepNode(selectedStepNode.id, { label: e.target.value })
               }
             />
           </div>
@@ -160,9 +180,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             </label>
             <select
               style={inputStyle}
-              value={selectedNode.data.type}
+              value={selectedStepNode.data.type}
               onChange={(e) =>
-                onUpdateNode(selectedNode.id, {
+                onUpdateStepNode(selectedStepNode.id, {
                   type: e.target.value as "normal" | "initial" | "final",
                 })
               }
@@ -179,9 +199,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             </label>
             <textarea
               style={{ ...inputStyle, minHeight: "60px" }}
-              value={selectedNode.data.description || ""}
+              value={selectedStepNode.data.description || ""}
               onChange={(e) =>
-                onUpdateNode(selectedNode.id, { description: e.target.value })
+                onUpdateStepNode(selectedStepNode.id, { description: e.target.value })
               }
               placeholder="Optional description..."
             />
@@ -190,9 +210,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <div style={{ marginTop: "20px" }}>
             <h4 style={{ marginBottom: "12px" }}>Actions</h4>
 
-            {selectedNode.data.actions && selectedNode.data.actions.length > 0 ? (
+            {selectedStepNode.data.actions && selectedStepNode.data.actions.length > 0 ? (
               <div style={{ marginBottom: "12px" }}>
-                {selectedNode.data.actions.map((action) => (
+                {selectedStepNode.data.actions.map((action) => (
                   <div
                     key={action.id}
                     style={{
@@ -214,7 +234,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       <strong>{action.name}</strong>
                       <button
                         onClick={() =>
-                          onDeleteAction(selectedNode.id, action.id)
+                          onDeleteAction(selectedStepNode.id, action.id)
                         }
                         style={{
                           ...buttonStyle,
@@ -237,7 +257,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         style={{ ...inputStyle, fontSize: "12px" }}
                         value={action.qualifier}
                         onChange={(e) =>
-                          onUpdateAction(selectedNode.id, action.id, {
+                          onUpdateAction(selectedStepNode.id, action.id, {
                             qualifier: e.target.value as ActionQualifier,
                           })
                         }
@@ -260,7 +280,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         style={{ ...inputStyle, minHeight: "50px", fontSize: "12px" }}
                         value={action.body}
                         onChange={(e) =>
-                          onUpdateAction(selectedNode.id, action.id, {
+                          onUpdateAction(selectedStepNode.id, action.id, {
                             body: e.target.value,
                           })
                         }
@@ -306,8 +326,63 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 ))}
               </select>
               <button style={buttonStyle} onClick={handleAddAction}>
-                ➕ Add Action
+                Add Action
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedParallelNode && (
+        <div>
+          <h4 style={{ marginTop: 0, marginBottom: "12px" }}>
+            {selectedParallelNode.type === "parallelSplit"
+              ? "Parallel Split"
+              : "Parallel Join"}
+          </h4>
+
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", marginBottom: "4px" }}>
+              Name:
+            </label>
+            <input
+              type="text"
+              style={inputStyle}
+              value={selectedParallelNode.data.label}
+              onChange={(e) =>
+                onUpdateParallelNode(selectedParallelNode.id, {
+                  label: e.target.value,
+                })
+              }
+            />
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", marginBottom: "4px" }}>
+              Branches (IEC parallel requires at least 2):
+            </label>
+            <input
+              type="number"
+              min={MIN_PARALLEL_BRANCHES}
+              step={1}
+              style={inputStyle}
+              value={Math.max(
+                MIN_PARALLEL_BRANCHES,
+                Math.floor(selectedParallelNode.data.branchCount ?? MIN_PARALLEL_BRANCHES)
+              )}
+              onChange={(e) =>
+                onUpdateParallelNode(selectedParallelNode.id, {
+                  branchCount: Math.max(
+                    MIN_PARALLEL_BRANCHES,
+                    Number.parseInt(e.target.value || "0", 10) ||
+                      MIN_PARALLEL_BRANCHES
+                  ),
+                })
+              }
+            />
+            <div style={{ marginTop: "8px", fontSize: "11px", opacity: 0.8 }}>
+              Split exposes one input and one output handle per branch. Join exposes one
+              input handle per branch and one output.
             </div>
           </div>
         </div>

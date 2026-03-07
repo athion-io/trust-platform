@@ -1,4 +1,4 @@
-import { Node, Edge } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import type {
   RuntimeExtensionToWebviewMessage,
   RuntimeWebviewToExtensionMessage,
@@ -71,7 +71,7 @@ export interface ParallelNodeData extends Record<string, unknown> {
 /**
  * Data for a transition edge in the SFC diagram
  */
-export interface TransitionData {
+export interface TransitionData extends Record<string, unknown> {
   condition: string;
   description?: string;
   priority?: number;
@@ -81,16 +81,14 @@ export interface TransitionData {
 /**
  * Extended Node type for SFC Steps
  */
-export interface SfcStepNode extends Node {
-  data: StepNodeData;
-}
+export type SfcStepNode = Node<StepNodeData, "step">;
 
 /**
  * Extended Node type for Parallel Split/Join markers
  */
-export interface SfcParallelNode extends Node {
-  data: ParallelNodeData;
-}
+export type SfcParallelSplitNode = Node<ParallelNodeData, "parallelSplit">;
+export type SfcParallelJoinNode = Node<ParallelNodeData, "parallelJoin">;
+export type SfcParallelNode = SfcParallelSplitNode | SfcParallelJoinNode;
 
 /**
  * Union type for all SFC nodes
@@ -100,9 +98,7 @@ export type SfcNode = SfcStepNode | SfcParallelNode;
 /**
  * Extended Edge type for SFC Transitions
  */
-export interface SfcTransitionEdge extends Edge {
-  data?: TransitionData;
-}
+export type SfcTransitionEdge = Edge<TransitionData> & { data: TransitionData };
 
 /**
  * Variable declaration for SFC
@@ -112,6 +108,23 @@ export interface SfcVariable {
   type: string;
   initialValue?: string;
   comment?: string;
+}
+
+export interface SfcParallelSplit {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  branchIds: string[];
+}
+
+export interface SfcParallelJoin {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  branchIds: string[];
+  nextStepId?: string;
 }
 
 /**
@@ -135,6 +148,8 @@ export interface SfcWorkspace {
     targetStepId: string;
     priority?: number;
   }>;
+  parallelSplits?: SfcParallelSplit[];
+  parallelJoins?: SfcParallelJoin[];
   variables?: SfcVariable[];
   metadata?: {
     author?: string;
@@ -168,7 +183,7 @@ export type SfcWebviewToExtensionMessage =
   | { type: "addTransition" }
   | { type: "deleteSelected" }
   | { type: "validate" }
-  | { type: "generateST" }
+  | { type: "generateST"; content?: string }
   | { type: "autoLayout" }
   | { type: "debugPause" }
   | { type: "debugResume" }
@@ -185,6 +200,7 @@ export type SfcExtensionToWebviewMessage =
   | { type: "executionState"; state: SfcExecutionState }
   | { type: "executionStopped" }
   | { type: "validationResult"; errors: ValidationError[] }
+  | { type: "codeGenerated"; code?: string; errors?: string[] }
   | RuntimeExtensionToWebviewMessage;
 
 /**

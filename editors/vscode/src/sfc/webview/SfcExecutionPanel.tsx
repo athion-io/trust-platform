@@ -73,7 +73,7 @@ export const SfcExecutionPanel: React.FC<SfcExecutionPanelProps> = ({
                   fontSize: "12px",
                 }}
               >
-                <div>{mode === "simulation" ? "🖥️ Simulation" : "🔧 Hardware"}</div>
+                <div>{mode === "simulation" ? "Simulation" : "Hardware"}</div>
               </div>
 
               <div style={{ fontSize: "12px", fontWeight: 600 }}>Execution Status</div>
@@ -92,7 +92,7 @@ export const SfcExecutionPanel: React.FC<SfcExecutionPanelProps> = ({
                 }}
               >
                 <div>
-                  {isPaused ? "⏸️ Paused" : "▶️ Running"}
+                  {isPaused ? "Paused" : "Running"}
                   {breakpointCount > 0 && ` (${breakpointCount} breakpoint${breakpointCount > 1 ? "s" : ""})`}
                 </div>
               </div>
@@ -124,7 +124,7 @@ export const SfcExecutionPanel: React.FC<SfcExecutionPanelProps> = ({
                           }}
                           title="Resume execution"
                         >
-                          ▶️ Resume
+                          Resume
                         </button>
                         <button
                           onClick={onDebugStepOver}
@@ -141,7 +141,7 @@ export const SfcExecutionPanel: React.FC<SfcExecutionPanelProps> = ({
                           }}
                           title="Execute one step and pause"
                         >
-                          ⏭️ Step
+                          Step
                         </button>
                       </>
                     ) : (
@@ -160,7 +160,7 @@ export const SfcExecutionPanel: React.FC<SfcExecutionPanelProps> = ({
                         }}
                         title="Pause execution"
                       >
-                        ⏸️ Pause
+                        Pause
                       </button>
                     )}
                   </div>

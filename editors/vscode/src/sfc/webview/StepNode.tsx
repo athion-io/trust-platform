@@ -1,11 +1,11 @@
 import React, { memo } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import type { StepNodeData } from "./types";
+import type { SfcStepNode } from "./types";
 
 /**
  * Custom node component for SFC steps following IEC 61131-3 standard
  */
-export const StepNode = memo<NodeProps<StepNodeData>>(({ data, selected }) => {
+export const StepNode = memo(({ data, selected }: NodeProps<SfcStepNode>) => {
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (data.onToggleBreakpoint) {
@@ -37,17 +37,24 @@ export const StepNode = memo<NodeProps<StepNodeData>>(({ data, selected }) => {
 
   // Simple rectangular box per IEC 61131-3
   const stepStyle: React.CSSProperties = {
-    minWidth: "100px",
-    padding: "12px 24px",
+    width: "200px",
+    minHeight: "56px",
+    padding: "10px 14px",
     border: `${borderWidth} solid ${borderColor}`,
+    borderRadius: "2px",
     background: backgroundColor,
     color: textColor,
     fontFamily: "var(--vscode-font-family)",
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: data.isActive ? 700 : isInitial ? 600 : 500,
     textAlign: "center",
     position: "relative",
     cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box",
     boxShadow: data.isActive 
       ? `0 0 0 3px ${borderColor}, 0 4px 12px rgba(76, 175, 80, 0.4)` 
       : selected 
@@ -97,7 +104,16 @@ export const StepNode = memo<NodeProps<StepNodeData>>(({ data, selected }) => {
         }}
       />
 
-      <div>{data.label}</div>
+      <div
+        style={{
+          width: "100%",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {data.label}
+      </div>
 
       {data.description && (
         <div
@@ -105,6 +121,10 @@ export const StepNode = memo<NodeProps<StepNodeData>>(({ data, selected }) => {
             fontSize: "10px",
             opacity: 0.7,
             marginTop: "4px",
+            width: "100%",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
           {data.description}

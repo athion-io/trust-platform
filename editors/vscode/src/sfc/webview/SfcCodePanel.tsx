@@ -3,13 +3,19 @@ import React from "react";
 interface SfcCodePanelProps {
   code: string | null;
   errors: string[];
+  isGenerating?: boolean;
   onCopy?: () => void;
 }
 
 /**
  * Code Panel - Displays generated Structured Text code in real-time
  */
-export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy }) => {
+export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({
+  code,
+  errors,
+  isGenerating = false,
+  onCopy,
+}) => {
   const handleCopyCode = () => {
     if (code) {
       navigator.clipboard.writeText(code);
@@ -51,7 +57,7 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
             color: "var(--vscode-foreground)",
           }}
         >
-          📄 Generated ST Code
+          Generated ST Code
         </h3>
         {code && (
           <button
@@ -67,7 +73,7 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
             }}
             title="Copy code to clipboard"
           >
-            📋 Copy
+            Copy
           </button>
         )}
       </div>
@@ -80,7 +86,28 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
           padding: code ? "12px" : "0",
         }}
       >
-        {code ? (
+        {isGenerating ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+              padding: "20px",
+              textAlign: "center",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                color: "var(--vscode-descriptionForeground)",
+              }}
+            >
+              Generating Structured Text...
+            </p>
+          </div>
+        ) : code ? (
           <pre
             style={{
               margin: 0,
@@ -106,9 +133,6 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
             }}
           >
             <div>
-              <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.5 }}>
-                ⚡
-              </div>
               <p
                 style={{
                   margin: 0,
@@ -126,7 +150,7 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
                   opacity: 0.7,
                 }}
               >
-                Updates automatically as you edit the SFC
+                Click Generate or Show Code to generate from the current SFC
               </p>
             </div>
           </div>
@@ -152,7 +176,7 @@ export const SfcCodePanel: React.FC<SfcCodePanelProps> = ({ code, errors, onCopy
               color: "var(--vscode-inputValidation-warningForeground)",
             }}
           >
-            ⚠️ Warnings ({errors.length})
+            Warnings ({errors.length})
           </h4>
           <ul
             style={{

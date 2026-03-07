@@ -159,6 +159,26 @@ export class SfcEngine {
    */
   validate(): SfcValidationError[] {
     const errors: SfcValidationError[] = [];
+    const parallelSplits = this.workspace.parallelSplits || [];
+    const parallelJoins = this.workspace.parallelJoins || [];
+    const stepIdSet = new Set(this.workspace.steps.map((step) => step.id));
+    const splitIdSet = new Set(parallelSplits.map((split) => split.id));
+    const joinIdSet = new Set(parallelJoins.map((join) => join.id));
+    const nodeIdSet = new Set([...stepIdSet, ...splitIdSet, ...joinIdSet]);
+
+    const outgoingBySource = new Map<string, SfcTransition[]>();
+    const incomingByTarget = new Map<string, SfcTransition[]>();
+    for (const transition of this.workspace.transitions) {
+      if (!outgoingBySource.has(transition.sourceStepId)) {
+        outgoingBySource.set(transition.sourceStepId, []);
+      }
+      outgoingBySource.get(transition.sourceStepId)!.push(transition);
+
+      if (!incomingByTarget.has(transition.targetStepId)) {
+        incomingByTarget.set(transition.targetStepId, []);
+      }
+      incomingByTarget.get(transition.targetStepId)!.push(transition);
+    }
 
     // Check for initial step
     const initialSteps = this.workspace.steps.filter((s) => s.initial);
@@ -184,20 +204,16 @@ export class SfcEngine {
       stepNames.add(step.name);
     }
 
-    // Check transitions reference valid steps
+    // Check transitions reference valid nodes
     for (const transition of this.workspace.transitions) {
-      const sourceExists = this.workspace.steps.some(
-        (s) => s.id === transition.sourceStepId
-      );
-      const targetExists = this.workspace.steps.some(
-        (s) => s.id === transition.targetStepId
-      );
+      const sourceExists = nodeIdSet.has(transition.sourceStepId);
+      const targetExists = nodeIdSet.has(transition.targetStepId);
 
       if (!sourceExists) {
         errors.push({
           id: `invalid_source_${transition.id}`,
           type: "transition",
-          message: `Transition references non-existent source step: ${transition.sourceStepId}`,
+          message: `Transition references non-existent source node: ${transition.sourceStepId}`,
           elementId: transition.id,
         });
       }
@@ -206,7 +222,7 @@ export class SfcEngine {
         errors.push({
           id: `invalid_target_${transition.id}`,
           type: "transition",
-          message: `Transition references non-existent target step: ${transition.targetStepId}`,
+          message: `Transition references non-existent target node: ${transition.targetStepId}`,
           elementId: transition.id,
         });
       }
@@ -218,6 +234,144 @@ export class SfcEngine {
           message: `Transition must have a condition`,
           elementId: transition.id,
         });
+      }
+    }
+
+    // Validate parallel split structure and connectivity
+    for (const split of parallelSplits) {
+      if (split.branchIds.length < 2) {
+        errors.push({
+          id: `split_branch_count_${split.id}`,
+          type: "connection",
+          message: `Parallel split ${split.name} must define at least 2 branches`,
+          elementId: split.id,
+        });
+      }
+
+      for (const branchId of split.branchIds) {
+        if (!stepIdSet.has(branchId)) {
+          errors.push({
+            id: `split_invalid_branch_${split.id}_${branchId}`,
+            type: "connection",
+            message: `Parallel split ${split.name} references unknown branch step: ${branchId}`,
+            elementId: split.id,
+          });
+        }
+      }
+
+      const splitIncoming = incomingByTarget.get(split.id) || [];
+      if (splitIncoming.length !== 1) {
+        errors.push({
+          id: `split_incoming_${split.id}`,
+          type: "connection",
+          message: `Parallel split ${split.name} must have exactly one incoming transition`,
+          elementId: split.id,
+        });
+      }
+
+      const splitOutgoing = outgoingBySource.get(split.id) || [];
+      for (const branchId of split.branchIds) {
+        const outgoingToBranch = splitOutgoing.filter(
+          (transition) => transition.targetStepId === branchId
+        );
+        if (outgoingToBranch.length !== 1) {
+          errors.push({
+            id: `split_outgoing_${split.id}_${branchId}`,
+            type: "connection",
+            message: `Parallel split ${split.name} must connect to branch ${branchId} exactly once`,
+            elementId: split.id,
+          });
+        }
+      }
+
+      for (const transition of splitOutgoing) {
+        if (!split.branchIds.includes(transition.targetStepId)) {
+          errors.push({
+            id: `split_extra_target_${split.id}_${transition.id}`,
+            type: "connection",
+            message: `Parallel split ${split.name} has transition ${transition.id} to non-branch target ${transition.targetStepId}`,
+            elementId: split.id,
+          });
+        }
+      }
+    }
+
+    // Validate parallel join structure and connectivity
+    for (const join of parallelJoins) {
+      if (join.branchIds.length < 2) {
+        errors.push({
+          id: `join_branch_count_${join.id}`,
+          type: "connection",
+          message: `Parallel join ${join.name} must define at least 2 branches`,
+          elementId: join.id,
+        });
+      }
+
+      for (const branchId of join.branchIds) {
+        if (!stepIdSet.has(branchId)) {
+          errors.push({
+            id: `join_invalid_branch_${join.id}_${branchId}`,
+            type: "connection",
+            message: `Parallel join ${join.name} references unknown branch step: ${branchId}`,
+            elementId: join.id,
+          });
+        }
+      }
+
+      const joinIncoming = incomingByTarget.get(join.id) || [];
+      for (const branchId of join.branchIds) {
+        const incomingFromBranch = joinIncoming.filter(
+          (transition) => transition.sourceStepId === branchId
+        );
+        if (incomingFromBranch.length !== 1) {
+          errors.push({
+            id: `join_incoming_${join.id}_${branchId}`,
+            type: "connection",
+            message: `Parallel join ${join.name} must receive branch ${branchId} exactly once`,
+            elementId: join.id,
+          });
+        }
+      }
+
+      for (const transition of joinIncoming) {
+        if (!join.branchIds.includes(transition.sourceStepId)) {
+          errors.push({
+            id: `join_extra_source_${join.id}_${transition.id}`,
+            type: "connection",
+            message: `Parallel join ${join.name} has transition ${transition.id} from non-branch source ${transition.sourceStepId}`,
+            elementId: join.id,
+          });
+        }
+      }
+
+      const joinOutgoing = outgoingBySource.get(join.id) || [];
+      if (joinOutgoing.length !== 1) {
+        errors.push({
+          id: `join_outgoing_${join.id}`,
+          type: "connection",
+          message: `Parallel join ${join.name} must have exactly one outgoing transition`,
+          elementId: join.id,
+        });
+      }
+
+      if (join.nextStepId) {
+        if (!stepIdSet.has(join.nextStepId)) {
+          errors.push({
+            id: `join_next_missing_${join.id}`,
+            type: "connection",
+            message: `Parallel join ${join.name} references unknown next step: ${join.nextStepId}`,
+            elementId: join.id,
+          });
+        }
+        const nextTransition = joinOutgoing[0];
+        if (nextTransition && nextTransition.targetStepId !== join.nextStepId) {
+          errors.push({
+            id: `join_next_mismatch_${join.id}`,
+            type: "connection",
+            message: `Parallel join ${join.name} nextStepId (${join.nextStepId}) does not match outgoing transition target (${nextTransition.targetStepId})`,
+            elementId: join.id,
+          });
+        }
       }
     }
 
