@@ -132,6 +132,50 @@ export class WasmAnalysisEngine {
         }
     }
     /**
+     * Evaluate an ST expression with given variables
+     *
+     * # Request Format
+     * ```json
+     * {
+     *   "expression": "temperature > 25.0 AND enabled",
+     *   "variables": {
+     *     "temperature": { "value": { "type": "real", "value": 30.5 } },
+     *     "enabled": { "value": { "type": "bool", "value": true } }
+     *   }
+     * }
+     * ```
+     *
+     * # Response Format
+     * ```json
+     * {
+     *   "success": true,
+     *   "value": { "type": "bool", "value": true }
+     * }
+     * ```
+     * @param {string} request_json
+     * @returns {string}
+     */
+    evaluateExpressionJson(request_json) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_malloc_command_export, wasm.__wbindgen_realloc_command_export);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.wasmanalysisengine_evaluateExpressionJson(this.__wbg_ptr, ptr0, len0);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free_command_export(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * @param {string} request_json
      * @returns {string}
      */
@@ -236,7 +280,7 @@ if (Symbol.dispose) WasmAnalysisEngine.prototype[Symbol.dispose] = WasmAnalysisE
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_be289d5034ed271b: function(arg0, arg1) {
+        __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
