@@ -143,6 +143,11 @@ impl Evaluator {
                 Err(EvalError::SyntaxError("Invalid name reference".to_string()))
             }
 
+            // Field expressions (`obj.field`)
+            SyntaxKind::FieldExpr => {
+                self.eval_field(node, variables)
+            }
+
             // Binary expressions
             SyntaxKind::BinaryExpr => {
                 self.eval_binary(node, variables)
@@ -174,6 +179,45 @@ impl Evaluator {
                     node.kind()
                 )))
             }
+        }
+    }
+
+    fn eval_field(
+        &self,
+        node: &SyntaxNode,
+        variables: &HashMap<String, Variable>,
+    ) -> Result<Value> {
+        let mut base_value = None;
+        let mut field_name = None;
+
+        for child in node.children() {
+            if child.kind() == SyntaxKind::Name && field_name.is_none() {
+                for token_child in child.children_with_tokens() {
+                    if let Some(token) = token_child.as_token() {
+                        if token.kind() == SyntaxKind::Ident {
+                            field_name = Some(token.text().to_string());
+                            break;
+                        }
+                    }
+                }
+            } else if base_value.is_none() {
+                base_value = Some(self.eval_node(&child, variables)?);
+            }
+        }
+
+        let base_value = base_value.ok_or_else(|| {
+            EvalError::SyntaxError("Field expression missing base value".to_string())
+        })?;
+
+        let field_name = field_name.ok_or_else(|| {
+            EvalError::SyntaxError("Field expression missing field name".to_string())
+        })?;
+
+        match base_value {
+            Value::Struct(fields) => fields.get(&field_name).cloned().ok_or_else(|| {
+                EvalError::RuntimeError(format!("Field '{}' not found in struct", field_name))
+            }),
+            other => Err(EvalError::type_error("STRUCT", other.type_name())),
         }
     }
 

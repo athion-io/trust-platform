@@ -140,4 +140,31 @@ mod tests {
             error_msg
         );
     }
+
+    #[test]
+    fn test_evaluate_with_struct_variable_format() {
+        let engine = crate::WasmAnalysisEngine::default();
+
+        let request = r#"{
+            "expression": "device.enabled AND (device.count > 3)",
+            "variables": {
+                "device": {
+                    "value": {
+                        "type": "struct",
+                        "value": {
+                            "enabled": { "type": "bool", "value": true },
+                            "count": { "type": "int", "value": 7 },
+                            "name": { "type": "string", "value": "pump-a" }
+                        }
+                    }
+                }
+            }
+        }"#;
+
+        let response = engine.evaluate_expression_json(request).unwrap();
+        let resp: EvaluateExpressionResponse = serde_json::from_str(&response).unwrap();
+
+        assert!(resp.success);
+        assert!(matches!(resp.value, Some(ValueJson::Bool(true))));
+    }
 }

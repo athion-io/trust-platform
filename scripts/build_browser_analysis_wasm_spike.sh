@@ -8,6 +8,7 @@ WEB_SRC="${ROOT_DIR}/docs/internal/prototypes/browser_analysis_wasm_spike/web"
 WEB_OUT="${OUT_DIR}/web"
 RUNTIME_UI_DIR="${ROOT_DIR}/crates/trust-runtime/src/web/ui"
 RUNTIME_ASSETS_DIR="${RUNTIME_UI_DIR}/assets"
+RUNTIME_BASE_CSS="${RUNTIME_UI_DIR}/chunks/base-css/base-01.css"
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
   echo "error: wasm-pack is required."
@@ -33,9 +34,15 @@ mkdir -p "${PKG_DIR}" "${WEB_OUT}"
 )
 
 cp -R "${WEB_SRC}/." "${WEB_OUT}/"
-cp "${RUNTIME_UI_DIR}/styles.css" "${WEB_OUT}/runtime-styles.css"
 cp "${RUNTIME_ASSETS_DIR}/favicon.svg" "${WEB_OUT}/favicon.svg"
 cp "${RUNTIME_ASSETS_DIR}/logo.svg" "${WEB_OUT}/logo.svg"
+
+{
+  cat "${RUNTIME_BASE_CSS}"
+  for css in "${RUNTIME_UI_DIR}"/chunks/ide-css/ide-*.css; do
+    cat "${css}"
+  done
+} > "${WEB_OUT}/runtime-styles.css"
 
 cat <<EOF
 WASM browser analysis spike build complete.

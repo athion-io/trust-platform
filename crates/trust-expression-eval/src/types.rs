@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::collections::HashMap;
 
 /// Runtime value that can be stored in a variable
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -11,6 +12,7 @@ pub enum Value {
     Int(i64),
     Real(f64),
     String(String),
+    Struct(HashMap<String, Value>),
 }
 
 impl Value {
@@ -49,6 +51,7 @@ impl Value {
             Value::Int(_) => "INT",
             Value::Real(_) => "REAL",
             Value::String(_) => "STRING",
+            Value::Struct(_) => "STRUCT",
         }
     }
 }
@@ -60,6 +63,18 @@ impl fmt::Display for Value {
             Value::Int(i) => write!(f, "{}", i),
             Value::Real(r) => write!(f, "{}", r),
             Value::String(s) => write!(f, "'{}'", s),
+            Value::Struct(fields) => {
+                let mut entries: Vec<_> = fields.iter().collect();
+                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                write!(f, "{{")?;
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    if index > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", key, value)?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -85,6 +100,10 @@ impl Variable {
 
     pub fn string(s: impl Into<String>) -> Self {
         Self { value: Value::String(s.into()) }
+    }
+
+    pub fn structure(fields: HashMap<String, Value>) -> Self {
+        Self { value: Value::Struct(fields) }
     }
 
     pub fn value(&self) -> &Value {
@@ -129,5 +148,11 @@ impl From<&str> for Variable {
 impl From<Value> for Variable {
     fn from(value: Value) -> Self {
         Self { value }
+    }
+}
+
+impl From<HashMap<String, Value>> for Variable {
+    fn from(fields: HashMap<String, Value>) -> Self {
+        Self::structure(fields)
     }
 }

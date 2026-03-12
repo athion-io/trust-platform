@@ -19,7 +19,7 @@ async function ensureEngine() {
     return engine;
   } catch (error) {
     startupError = new Error(
-      `failed to initialize trust-wasm-analysis: ${String(error)}`
+      `failed to initialize trust-wasm-analysis: ${String(error)}`,
     );
     self.postMessage({
       type: "startup_error",
@@ -42,7 +42,7 @@ function execute(method, params) {
   switch (method) {
     case "applyDocuments":
       return parseJson(
-        engine.applyDocumentsJson(JSON.stringify(params.documents ?? []))
+        engine.applyDocumentsJson(JSON.stringify(params.documents ?? [])),
       );
     case "diagnostics":
       return parseJson(engine.diagnosticsJson(params.uri));
@@ -50,6 +50,8 @@ function execute(method, params) {
       return parseJson(engine.hoverJson(JSON.stringify(params)));
     case "completion":
       return parseJson(engine.completionJson(JSON.stringify(params)));
+    case "evaluateExpression":
+      return parseJson(engine.evaluateExpressionJson(JSON.stringify(params)));
     case "references":
       return parseJson(engine.referencesJson(JSON.stringify(params)));
     case "definition":

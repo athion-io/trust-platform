@@ -136,4 +136,69 @@ mod tests {
         let result = evaluator.eval("x + 5", &vars);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_struct_field_access() {
+        let evaluator = Evaluator::new();
+        let mut vars = HashMap::new();
+        vars.insert(
+            "device".to_string(),
+            Variable::structure(HashMap::from([
+                ("enabled".to_string(), Value::Bool(true)),
+                ("count".to_string(), Value::Int(7)),
+                ("name".to_string(), Value::String("pump-a".to_string())),
+            ])),
+        );
+
+        assert_eq!(
+            evaluator.eval("device.count + 3", &vars).unwrap(),
+            Variable::int(10)
+        );
+
+        assert_eq!(
+            evaluator.eval("device.enabled AND TRUE", &vars).unwrap(),
+            Variable::bool(true)
+        );
+
+        assert_eq!(
+            evaluator.eval("device.name = 'pump-a'", &vars).unwrap(),
+            Variable::bool(true)
+        );
+    }
+
+    #[test]
+    fn test_nested_struct_field_access() {
+        let evaluator = Evaluator::new();
+        let mut vars = HashMap::new();
+        vars.insert(
+            "outer".to_string(),
+            Variable::structure(HashMap::from([(
+                "inner".to_string(),
+                Value::Struct(HashMap::from([
+                    ("ok".to_string(), Value::Bool(true)),
+                    ("value".to_string(), Value::Int(12)),
+                ])),
+            )])),
+        );
+
+        assert_eq!(
+            evaluator.eval("outer.inner.ok", &vars).unwrap(),
+            Variable::bool(true)
+        );
+
+        assert_eq!(
+            evaluator.eval("outer.inner.value > 10", &vars).unwrap(),
+            Variable::bool(true)
+        );
+    }
+
+    #[test]
+    fn test_field_access_on_non_struct_errors() {
+        let evaluator = Evaluator::new();
+        let mut vars = HashMap::new();
+        vars.insert("x".to_string(), Variable::int(1));
+
+        let result = evaluator.eval("x.field", &vars);
+        assert!(result.is_err());
+    }
 }

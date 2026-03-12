@@ -30,6 +30,8 @@ pub enum ValueJson {
     Real(f64),
     #[serde(rename = "string")]
     String(String),
+    #[serde(rename = "struct")]
+    Struct(HashMap<String, ValueJson>),
 }
 
 /// Response from expression evaluation
@@ -52,6 +54,12 @@ impl From<Value> for ValueJson {
             Value::Int(i) => ValueJson::Int(i),
             Value::Real(r) => ValueJson::Real(r),
             Value::String(s) => ValueJson::String(s),
+            Value::Struct(fields) => ValueJson::Struct(
+                fields
+                    .into_iter()
+                    .map(|(name, value)| (name, ValueJson::from(value)))
+                    .collect(),
+            ),
         }
     }
 }
@@ -63,6 +71,12 @@ impl From<ValueJson> for Value {
             ValueJson::Int(i) => Value::Int(i),
             ValueJson::Real(r) => Value::Real(r),
             ValueJson::String(s) => Value::String(s),
+            ValueJson::Struct(fields) => Value::Struct(
+                fields
+                    .into_iter()
+                    .map(|(name, value)| (name, Value::from(value)))
+                    .collect(),
+            ),
         }
     }
 }

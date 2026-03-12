@@ -52,7 +52,11 @@ export class TrustWasmAnalysisClient {
       return;
     }
 
-    this.emitStatus({ type: "worker_spawned", reason, restartCount: this.restartCount });
+    this.emitStatus({
+      type: "worker_spawned",
+      reason,
+      restartCount: this.restartCount,
+    });
 
     this.worker.addEventListener("message", (event) => {
       this.handleMessage(event.data);
@@ -239,7 +243,9 @@ export class TrustWasmAnalysisClient {
         id,
         method,
         params,
-        timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : this.defaultTimeoutMs,
+        timeoutMs: Number.isFinite(timeoutMs)
+          ? timeoutMs
+          : this.defaultTimeoutMs,
       });
     });
   }
@@ -277,6 +283,14 @@ export class TrustWasmAnalysisClient {
 
   completion(uri, position, limit = 25, timeoutMs = 1600) {
     return this.send("completion", { uri, position, limit }, timeoutMs);
+  }
+
+  evaluateExpression(expression, variables = {}, timeoutMs = 2000) {
+    return this.send(
+      "evaluateExpression",
+      { expression, variables },
+      timeoutMs,
+    );
   }
 
   status(timeoutMs = 800) {
