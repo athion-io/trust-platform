@@ -299,10 +299,11 @@ impl Evaluator {
             "-" => self.subtract(left, right),
             "*" => self.multiply(left, right),
             "/" => self.divide(left, right),
+            "MOD" => self.modulo(left, right),
 
             // Comparison
-            "=" => Ok(Value::Bool(left == right)),
-            "<>" => Ok(Value::Bool(left != right)),
+            "=" => self.equal(left, right),
+            "<>" => self.not_equal(left, right),
             "<" => self.less_than(left, right),
             ">" => self.greater_than(left, right),
             "<=" => self.less_equal(left, right),
@@ -310,6 +311,7 @@ impl Evaluator {
 
             // Logical
             "AND" => self.logical_and(left, right),
+            "&" => self.logical_and(left, right),
             "OR" => self.logical_or(left, right),
             "XOR" => self.logical_xor(left, right),
 
@@ -394,7 +396,52 @@ impl Evaluator {
         }
     }
 
+    fn modulo(&self, left: &Value, right: &Value) -> Result<Value> {
+        match (left, right) {
+            (Value::Int(a), Value::Int(b)) => {
+                if *b == 0 {
+                    return Err(EvalError::DivisionByZero);
+                }
+                Ok(Value::Int(a % b))
+            }
+            (a, b) => {
+                let a = a.as_real().ok_or_else(|| EvalError::type_error("number", a.type_name()))?;
+                let b = b.as_real().ok_or_else(|| EvalError::type_error("number", b.type_name()))?;
+                if b == 0.0 {
+                    return Err(EvalError::DivisionByZero);
+                }
+                Ok(Value::Real(a % b))
+            }
+        }
+    }
+
     // Comparison operations
+    fn equal(&self, left: &Value, right: &Value) -> Result<Value> {
+        match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
+            (Value::String(a), Value::String(b)) => Ok(Value::Bool(a == b)),
+            (a, b) => {
+                let a = a.as_real().ok_or_else(|| EvalError::type_error("number", a.type_name()))?;
+                let b = b.as_real().ok_or_else(|| EvalError::type_error("number", b.type_name()))?;
+                Ok(Value::Bool(a == b))
+            }
+        }
+    }
+
+    fn not_equal(&self, left: &Value, right: &Value) -> Result<Value> {
+        match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
+            (Value::String(a), Value::String(b)) => Ok(Value::Bool(a != b)),
+            (a, b) => {
+                let a = a.as_real().ok_or_else(|| EvalError::type_error("number", a.type_name()))?;
+                let b = b.as_real().ok_or_else(|| EvalError::type_error("number", b.type_name()))?;
+                Ok(Value::Bool(a != b))
+            }
+        }
+    }
+
     fn less_than(&self, left: &Value, right: &Value) -> Result<Value> {
         match (left, right) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),

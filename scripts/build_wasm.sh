@@ -10,6 +10,8 @@ DEMO_DIR="${ROOT_DIR}/docs/demo"
 RUNTIME_UI_DIR="${ROOT_DIR}/crates/trust-runtime/src/web/ui"
 RUNTIME_ASSETS_DIR="${RUNTIME_UI_DIR}/assets"
 RUNTIME_BASE_CSS="${RUNTIME_UI_DIR}/chunks/base-css/base-01.css"
+WORKER_SRC_PRIMARY="${WEB_SRC}/worker.js"
+WORKER_SRC_FALLBACK="${DEMO_DIR}/wasm/worker.js"
 
 MODE="demo"
 USE_WASM_OPT=1
@@ -21,6 +23,7 @@ Usage: scripts/build_wasm.sh [options]
 
 Isolated wasm/demo build with wasm-focused profile tuning.
 This does not modify existing build scripts.
+The pkg output also stages convenience assets used by app consumers.
 
 Options:
   --mode <demo|pkg>       Build demo assets (default) or package only.
@@ -104,6 +107,20 @@ echo "==> Building trust-wasm-analysis with wasm size profile..."
     --features wasm
 )
 
+echo "==> Staging convenience assets in pkg output..."
+cp "${RUNTIME_UI_DIR}/wasm/analysis-client.js" "${PKG_DIR}/analysis-client.js"
+if [[ -f "${WORKER_SRC_PRIMARY}" ]]; then
+  cp "${WORKER_SRC_PRIMARY}" "${PKG_DIR}/worker.js"
+elif [[ -f "${WORKER_SRC_FALLBACK}" ]]; then
+  cp "${WORKER_SRC_FALLBACK}" "${PKG_DIR}/worker.js"
+else
+  echo "warn: no worker.js source found at ${WORKER_SRC_PRIMARY} or ${WORKER_SRC_FALLBACK}"
+fi
+
+if [[ ! -f "${PKG_DIR}/trust_wasm_analysis.d.ts" ]]; then
+  echo "warn: trust_wasm_analysis.d.ts was not produced by wasm-pack"
+fi
+
 WASM_FILE="${PKG_DIR}/trust_wasm_analysis_bg.wasm"
 if [[ -f "${WASM_FILE}" && "${USE_WASM_OPT}" -eq 1 ]]; then
   if command -v wasm-opt >/dev/null 2>&1; then
@@ -158,6 +175,9 @@ echo ""
 echo "==> Size report"
 print_size "${PKG_DIR}/trust_wasm_analysis_bg.wasm"
 print_size "${PKG_DIR}/trust_wasm_analysis.js"
+print_size "${PKG_DIR}/analysis-client.js"
+print_size "${PKG_DIR}/worker.js"
+print_size "${PKG_DIR}/trust_wasm_analysis.d.ts"
 if [[ "${MODE}" == "demo" ]]; then
   print_size "${DEMO_DIR}/wasm/trust_wasm_analysis_bg.wasm"
   print_size "${DEMO_DIR}/wasm/trust_wasm_analysis.js"
